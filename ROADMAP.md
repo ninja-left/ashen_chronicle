@@ -12,6 +12,8 @@ Done when:
 - the design plan and roadmap are written
 - the codebase has a clean folder structure
 
+Status: complete.
+
 ## Phase 1: Engine skeleton
 
 Goal: prove the game can exist as a stable simulation.
@@ -23,6 +25,16 @@ Work items:
 - basic character creation
 - text UI
 - simple turn/state loop
+
+Status: in progress.
+
+Completed so far:
+- world state model exists
+- stable entity IDs are used for world content and history entries
+- basic character creation is wired into the game loop
+- text UI menus and prompts exist
+- save/load is implemented through a versioned JSON save file
+- a simple travel/rest/journal/death loop is playable
 
 Done when:
 - a new game can start

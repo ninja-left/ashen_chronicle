@@ -1,3 +1,11 @@
+mod game;
+mod model;
+mod persistence;
+mod ui;
+
 fn main() {
-    println!("The Ashen Chronicle");
+    if let Err(err) = game::run() {
+        eprintln!("Fatal error: {err}");
+        std::process::exit(1);
+    }
 }
