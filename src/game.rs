@@ -42,7 +42,7 @@ pub fn run() -> std::io::Result<()> {
 }
 
 fn start_or_load(save_path: &PathBuf) -> std::io::Result<GameState> {
-    println!("The Ashen Chronicle v0.9.0");
+    println!("The Ashen Chronicle v0.10.0");
     println!("--------------------------------");
     if save_path.exists() {
         let choice = prompt("Load existing save? [y/N] ")?;
@@ -82,24 +82,40 @@ fn create_inherited_from_world(state: &GameState) -> std::io::Result<GameState> 
 }
 
 fn bootstrap_campaign_content(state: &mut GameState) {
-    let content = load_campaign_content();
-    let issues = content.validate();
-    if !issues.is_empty() {
+    let report = crate::content::load_campaign_content_report();
+    if !report.loaded_mods.is_empty() {
+        println!("Loaded mods:");
+        for manifest in &report.loaded_mods {
+            let version = if manifest.version.is_empty() { "unknown" } else { manifest.version.as_str() };
+            println!("  - {} ({}, v{})", manifest.name, manifest.id, version);
+        }
+    }
+    if !report.warnings.is_empty() {
         eprintln!("Campaign content warnings:");
-        for issue in issues {
+        for issue in &report.warnings {
             eprintln!("- {issue}");
         }
     }
-    migrate_runtime_quest_data(state, &content);
-    ensure_campaign_factions(state, &content);
-    ensure_campaign_npcs(state, &content);
-    ensure_campaign_quests(state, &content);
+    let content = &report.content;
+    migrate_runtime_quest_data(state, content);
+    ensure_campaign_factions(state, content);
+    ensure_campaign_npcs(state, content);
+    ensure_campaign_quests(state, content);
 }
 
 fn migrate_runtime_quest_data(state: &mut GameState, content: &CampaignContent) {
     for quest in &mut state.quests {
+        if quest.content_id.is_empty() {
+            if let Some(definition) = content
+                .quests
+                .iter()
+                .find(|entry| entry.id == quest.title || entry.title == quest.title)
+            {
+                quest.content_id = definition.id.clone();
+            }
+        }
         if quest.reward_item_name.is_empty() {
-            if let Some(definition) = content.quests.iter().find(|entry| entry.title == quest.title) {
+            if let Some(definition) = content.quests.iter().find(|entry| entry.title == quest.title || entry.id == quest.content_id) {
                 quest.reward_item_name = definition.reward_item_name.clone();
             }
         }
@@ -137,10 +153,11 @@ fn ensure_campaign_npcs(state: &mut GameState, content: &CampaignContent) {
 }
 
 fn ensure_campaign_quests(state: &mut GameState, content: &CampaignContent) {
-    migrate_completed_quest_deeds(state);
+    migrate_completed_quest_deeds(state, content);
     for quest in &content.quests {
         ensure_quest(
             state,
+            &quest.id,
             &quest.title,
             &quest.description,
             &quest.location_name,
@@ -152,23 +169,44 @@ fn ensure_campaign_quests(state: &mut GameState, content: &CampaignContent) {
     }
 }
 
-fn migrate_completed_quest_deeds(state: &mut GameState) {
-    let completed_titles: Vec<String> = state
-        .quests
-        .iter()
-        .filter(|quest| quest.completed)
-        .map(|quest| quest.title.clone())
-        .collect();
-    for title in completed_titles {
-        if !state.world.completed_quest_titles.iter().any(|known| known == &title) {
-            state.world.completed_quest_titles.push(title);
+fn migrate_completed_quest_deeds(state: &mut GameState, content: &CampaignContent) {
+    let mut completed_ids = Vec::new();
+    for quest in &state.quests {
+        if !quest.completed {
+            continue;
+        }
+        let content_id = quest_identity(quest, content);
+        if !completed_ids.iter().any(|known| known == content_id) {
+            completed_ids.push(content_id.to_string());
         }
     }
+
+    for stored in state.world.completed_quest_ids.clone() {
+        if !completed_ids.iter().any(|known| known == &stored) {
+            if let Some(definition) = content.quests.iter().find(|entry| entry.title == stored || entry.id == stored) {
+                completed_ids.push(definition.id.clone());
+            } else {
+                completed_ids.push(stored);
+            }
+        }
+    }
+
+    state.world.completed_quest_ids = completed_ids;
 }
 
-fn ensure_quest(state: &mut GameState, title: &str, description: &str, location: &str, faction: &str, giver: &str, item: &str, reward_item_name: &str) {
-    if state.quests.iter().any(|quest| quest.title == title)
-        || state.world.completed_quest_titles.iter().any(|known| known == title)
+fn ensure_quest(
+    state: &mut GameState,
+    content_id: &str,
+    title: &str,
+    description: &str,
+    location: &str,
+    faction: &str,
+    giver: &str,
+    item: &str,
+    reward_item_name: &str,
+) {
+    if state.quests.iter().any(|quest| quest.content_id == content_id || (quest.content_id.is_empty() && quest.title == title))
+        || state.world.completed_quest_ids.iter().any(|known| known == content_id || known == title)
     {
         return;
     }
@@ -176,12 +214,31 @@ fn ensure_quest(state: &mut GameState, title: &str, description: &str, location:
         location_id_by_name(&state.world, location), faction_id_by_name(state, faction), npc_id_by_name(state, giver)
     ) {
         let id = state.world.allocate_id();
-        let mut quest = Quest::new(id, title, description, location_id, faction_id, giver_npc_id, item, reward_item_name);
+        let mut quest = Quest::new(id, content_id.to_string(), title, description, location_id, faction_id, giver_npc_id, item, reward_item_name);
         // Content-driven quests begin unoffered and unfinished.
         quest.offered = false;
         state.quests.push(quest);
     }
 }
+
+fn quest_identity<'a>(quest: &'a Quest, content: &'a CampaignContent) -> &'a str {
+    if !quest.content_id.is_empty() {
+        &quest.content_id
+    } else if let Some(definition) = content.quests.iter().find(|entry| entry.title == quest.title) {
+        &definition.id
+    } else {
+        &quest.title
+    }
+}
+
+fn quest_key<'a>(quest: &'a Quest) -> &'a str {
+    if quest.content_id.is_empty() {
+        &quest.title
+    } else {
+        &quest.content_id
+    }
+}
+
 
 fn faction_by_name<'a>(state: &'a GameState, name: &str) -> Option<&'a Faction> {
     state.factions.iter().find(|faction| faction.name == name)
@@ -427,11 +484,18 @@ fn talk_to_npc(state: &mut GameState, npc_id: EntityId) -> std::io::Result<()> {
             0 => {
                 let mut found_offer = false;
                 for quest_index in quest_indices {
-                    let (title, description, faction_id, offered, completed) = {
+                    let (quest_key, title, description, faction_id, offered, completed) = {
                         let quest = &state.quests[quest_index];
-                        (quest.title.clone(), quest.description.clone(), quest.faction_id, quest.offered, quest.completed)
+                        (
+                            quest_key(quest).to_string(),
+                            quest.title.clone(),
+                            quest.description.clone(),
+                            quest.faction_id,
+                            quest.offered,
+                            quest.completed,
+                        )
                     };
-                    if state.world.completed_quest_titles.iter().any(|known| known == &title) {
+                    if state.world.completed_quest_ids.iter().any(|known| known == &quest_key) {
                         continue;
                     }
                     if completed {
@@ -457,11 +521,17 @@ fn talk_to_npc(state: &mut GameState, npc_id: EntityId) -> std::io::Result<()> {
             1 => {
                 let mut handled = false;
                 for quest_index in quest_indices {
-                    let (title, offered, completed, required_item_name) = {
+                    let (quest_key, title, offered, completed, required_item_name) = {
                         let quest = &state.quests[quest_index];
-                        (quest.title.clone(), quest.offered, quest.completed, quest.required_item_name.clone())
+                        (
+                            quest_key(quest).to_string(),
+                            quest.title.clone(),
+                            quest.offered,
+                            quest.completed,
+                            quest.required_item_name.clone(),
+                        )
                     };
-                    if state.world.completed_quest_titles.iter().any(|known| known == &title) || completed {
+                    if state.world.completed_quest_ids.iter().any(|known| known == &quest_key) || completed {
                         continue;
                     }
                     if !offered {
@@ -488,11 +558,16 @@ fn talk_to_npc(state: &mut GameState, npc_id: EntityId) -> std::io::Result<()> {
 }
 
 fn complete_quest(state: &mut GameState, quest_index: usize) -> bool {
-    let (title, required_item_name, faction_id) = {
+    let (quest_key, title, required_item_name, faction_id) = {
         let quest = &state.quests[quest_index];
-        (quest.title.clone(), quest.required_item_name.clone(), quest.faction_id)
+        (
+            quest_key(quest).to_string(),
+            quest.title.clone(),
+            quest.required_item_name.clone(),
+            quest.faction_id,
+        )
     };
-    if state.world.completed_quest_titles.iter().any(|known| known == &title) {
+    if state.world.completed_quest_ids.iter().any(|known| known == &quest_key) {
         return false;
     }
 
@@ -507,7 +582,7 @@ fn complete_quest(state: &mut GameState, quest_index: usize) -> bool {
         quest.reward_claimed = true;
         quest.completed_by = Some(current_character_name.clone());
     }
-    state.world.completed_quest_titles.push(title.clone());
+    state.world.completed_quest_ids.push(quest_key.clone());
 
     // Reputation is split between doing the deed and carrying the faction's reward.
     adjust_faction_reputation(state, faction_id, 5, &format!("{} completed {}.", current_character_name, title));

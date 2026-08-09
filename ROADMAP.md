@@ -202,6 +202,16 @@ Work items:
 Done when:
 - a mod can add or override content without editing engine code
 
+
+## v0.10.0 Mod loading foundation
+
+Completed:
+- added mod discovery under `data/mods`
+- loaded mod content after the base content pack
+- merged content by stable IDs and location keys so mods can replace or extend data safely
+- kept broken mod files from crashing the game by reporting load warnings
+- moved quest identity handling onto stable content IDs in the runtime paths
+
 ## Phase 7: Optional visuals
 
 Goal: support images without changing the core structure.

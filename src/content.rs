@@ -7,6 +7,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 
 const CONTENT_FILE_NAME: &str = "data/base_content.json";
+const MODS_DIR_NAME: &str = "data/mods";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CampaignContent {
@@ -91,6 +92,33 @@ pub struct EncounterContent {
 pub struct LocationAtmosphere {
     pub location_name: String,
     pub text: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModManifest {
+    pub id: String,
+    pub name: String,
+    #[serde(default)]
+    pub version: String,
+    #[serde(default)]
+    pub priority: i32,
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    #[serde(default = "default_mod_content_file")]
+    pub content_file: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct ContentLoadReport {
+    pub content: CampaignContent,
+    pub loaded_mods: Vec<ModManifest>,
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+struct DiscoveredMod {
+    manifest: ModManifest,
+    manifest_path: PathBuf,
 }
 
 impl CampaignContent {
@@ -226,6 +254,16 @@ impl CampaignContent {
     }
 }
 
+impl ContentLoadReport {
+    fn with_content(content: CampaignContent) -> Self {
+        Self {
+            content,
+            loaded_mods: Vec::new(),
+            warnings: Vec::new(),
+        }
+    }
+}
+
 fn validate_unique_ids<'a, I>(kind: &str, ids: I, issues: &mut Vec<String>)
 where
     I: Iterator<Item = &'a str>,
@@ -239,21 +277,63 @@ where
 }
 
 pub fn load_campaign_content() -> CampaignContent {
-    if let Ok(content) = load_from_disk() {
-        let issues = content.validate();
-        if issues.is_empty() {
-            return content;
-        }
-        eprintln!("Campaign content warnings:");
-        for issue in issues {
-            eprintln!("- {issue}");
-        }
-        return content;
-    }
-    default_campaign_content()
+    load_campaign_content_report().content
 }
 
-fn load_from_disk() -> io::Result<CampaignContent> {
+pub fn load_campaign_content_report() -> ContentLoadReport {
+    let mut report = ContentLoadReport::with_content(match load_base_content() {
+        Ok(content) => content,
+        Err(err) => {
+            eprintln!("Could not load campaign content from disk: {err}");
+            default_campaign_content()
+        }
+    });
+
+    let mut discovered_mods = discover_mods();
+    discovered_mods.sort_by(|left, right| {
+        left.manifest
+            .priority
+            .cmp(&right.manifest.priority)
+            .then_with(|| left.manifest.id.cmp(&right.manifest.id))
+    });
+
+    let mut seen_mod_ids = HashSet::new();
+    for discovered in discovered_mods {
+        if !discovered.manifest.enabled {
+            continue;
+        }
+        if !seen_mod_ids.insert(discovered.manifest.id.clone()) {
+            report
+                .warnings
+                .push(format!("skipping duplicate mod id {}", discovered.manifest.id));
+            continue;
+        }
+
+        let manifest = discovered.manifest.clone();
+        let manifest_id = manifest.id.clone();
+        let manifest_name = manifest.name.clone();
+        match load_mod_content(&discovered.manifest_path, &manifest) {
+            Ok(mod_content) => {
+                merge_campaign_content(&mut report.content, mod_content);
+                report.loaded_mods.push(manifest);
+            }
+            Err(err) => {
+                report.warnings.push(format!(
+                    "could not load mod {} ({}) from {}: {}",
+                    manifest_id,
+                    manifest_name,
+                    discovered.manifest_path.display(),
+                    err
+                ));
+            }
+        }
+    }
+
+    report.warnings.extend(report.content.validate());
+    report
+}
+
+fn load_base_content() -> io::Result<CampaignContent> {
     let path = campaign_content_path().ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "base content file not found"))?;
     let data = fs::read_to_string(path)?;
     let parsed: CampaignContent = serde_json::from_str(&data)
@@ -261,21 +341,104 @@ fn load_from_disk() -> io::Result<CampaignContent> {
     Ok(parsed)
 }
 
+fn load_mod_content(manifest_path: &Path, manifest: &ModManifest) -> io::Result<CampaignContent> {
+    let content_path = manifest_path
+        .parent()
+        .unwrap_or_else(|| Path::new("."))
+        .join(&manifest.content_file);
+    let data = fs::read_to_string(&content_path)?;
+    let parsed: CampaignContent = serde_json::from_str(&data)
+        .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err.to_string()))?;
+    Ok(parsed)
+}
+
+fn discover_mods() -> Vec<DiscoveredMod> {
+    let mut found = Vec::new();
+    let Some(mods_root) = mods_directory_path() else {
+        return found;
+    };
+
+    let Ok(entries) = fs::read_dir(mods_root) else {
+        return found;
+    };
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_dir() {
+            continue;
+        }
+        let manifest_path = path.join("manifest.json");
+        if !manifest_path.exists() {
+            continue;
+        }
+        match fs::read_to_string(&manifest_path) {
+            Ok(data) => match serde_json::from_str::<ModManifest>(&data) {
+                Ok(manifest) => found.push(DiscoveredMod { manifest, manifest_path }),
+                Err(err) => eprintln!("Could not parse mod manifest {}: {}", manifest_path.display(), err),
+            },
+            Err(err) => eprintln!("Could not read mod manifest {}: {}", manifest_path.display(), err),
+        }
+    }
+
+    found
+}
+
 fn campaign_content_path() -> Option<PathBuf> {
+    first_existing_path(CONTENT_FILE_NAME)
+}
+
+fn mods_directory_path() -> Option<PathBuf> {
+    first_existing_path(MODS_DIR_NAME)
+}
+
+fn first_existing_path(relative: &str) -> Option<PathBuf> {
     let mut candidates = Vec::new();
-    candidates.push(PathBuf::from(CONTENT_FILE_NAME));
+    candidates.push(PathBuf::from(relative));
     if let Ok(current_dir) = env::current_dir() {
-        candidates.push(current_dir.join(CONTENT_FILE_NAME));
+        candidates.push(current_dir.join(relative));
     }
     if let Ok(exe) = env::current_exe() {
         if let Some(dir) = exe.parent() {
-            candidates.push(dir.join(CONTENT_FILE_NAME));
+            candidates.push(dir.join(relative));
             if let Some(parent) = dir.parent() {
-                candidates.push(parent.join(CONTENT_FILE_NAME));
+                candidates.push(parent.join(relative));
             }
         }
     }
     candidates.into_iter().find(|path| Path::new(path).exists())
+}
+
+fn merge_campaign_content(base: &mut CampaignContent, incoming: CampaignContent) {
+    base.world.region = incoming.world.region;
+    merge_vec_by_key(&mut base.world.locations, incoming.world.locations, |entry| entry.id.clone());
+    merge_vec_by_key(&mut base.factions, incoming.factions, |entry| entry.id.clone());
+    merge_vec_by_key(&mut base.npcs, incoming.npcs, |entry| entry.id.clone());
+    merge_vec_by_key(&mut base.quests, incoming.quests, |entry| entry.id.clone());
+    merge_vec_by_key(&mut base.encounters, incoming.encounters, |entry| entry.location_name.clone());
+    merge_vec_by_key(&mut base.atmospheres, incoming.atmospheres, |entry| entry.location_name.clone());
+}
+
+fn merge_vec_by_key<T, F>(base: &mut Vec<T>, incoming: Vec<T>, key_fn: F)
+where
+    T: Clone,
+    F: Fn(&T) -> String,
+{
+    for item in incoming {
+        let key = key_fn(&item);
+        if let Some(position) = base.iter().position(|existing| key_fn(existing) == key) {
+            base[position] = item;
+        } else {
+            base.push(item);
+        }
+    }
+}
+
+fn default_true() -> bool {
+    true
+}
+
+fn default_mod_content_file() -> String {
+    "content.json".to_string()
 }
 
 fn default_campaign_content() -> CampaignContent {
@@ -452,14 +615,38 @@ fn default_campaign_content() -> CampaignContent {
             },
         ],
         atmospheres: vec![
-            LocationAtmosphere { location_name: "Ashen Gate".to_string(), text: "Wind slips through the broken towers, carrying the smell of cold iron.".to_string() },
-            LocationAtmosphere { location_name: "Hollow Market".to_string(), text: "A shutter moves by itself. Somewhere behind the empty stalls, coins clink once.".to_string() },
-            LocationAtmosphere { location_name: "Old Shrine".to_string(), text: "Ash gathers in the altar's cracks. Whatever stirred here has not forgotten the road.".to_string() },
-            LocationAtmosphere { location_name: "Charred Watchtower".to_string(), text: "The watchtower bell gives a single dull knock, though no hand touches it.".to_string() },
-            LocationAtmosphere { location_name: "Mourning Fields".to_string(), text: "Pale grass bends around old stones, exposing scraps of names beneath the ash.".to_string() },
-            LocationAtmosphere { location_name: "Blackroot Hollow".to_string(), text: "Black roots shift under the soil with a sound like distant breathing.".to_string() },
-            LocationAtmosphere { location_name: "Drowned Chapel".to_string(), text: "Water laps against the chapel steps. Far below, something answers with a bell note.".to_string() },
-            LocationAtmosphere { location_name: "Sootbound Crossing".to_string(), text: "Old wheel tracks divide at the crossing, then vanish where the ash has been disturbed.".to_string() },
+            LocationAtmosphere {
+                location_name: "Ashen Gate".to_string(),
+                text: "Wind slips through the broken towers, carrying the smell of cold iron.".to_string(),
+            },
+            LocationAtmosphere {
+                location_name: "Hollow Market".to_string(),
+                text: "A shutter moves by itself. Somewhere behind the empty stalls, coins clink once.".to_string(),
+            },
+            LocationAtmosphere {
+                location_name: "Old Shrine".to_string(),
+                text: "Ash gathers in the altar's cracks. Whatever stirred here has not forgotten the road.".to_string(),
+            },
+            LocationAtmosphere {
+                location_name: "Charred Watchtower".to_string(),
+                text: "The watchtower bell gives a single dull knock, though no hand touches it.".to_string(),
+            },
+            LocationAtmosphere {
+                location_name: "Mourning Fields".to_string(),
+                text: "Pale grass bends around old stones, exposing scraps of names beneath the ash.".to_string(),
+            },
+            LocationAtmosphere {
+                location_name: "Blackroot Hollow".to_string(),
+                text: "Roots flex under the soil as if the ground itself is breathing.".to_string(),
+            },
+            LocationAtmosphere {
+                location_name: "Drowned Chapel".to_string(),
+                text: "Dark water laps at the pews while the chapel bell stays silent below the surface.".to_string(),
+            },
+            LocationAtmosphere {
+                location_name: "Sootbound Crossing".to_string(),
+                text: "Old wagon ruts vanish into the cinder as if the road never existed.".to_string(),
+            },
         ],
     }
 }

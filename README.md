@@ -16,6 +16,7 @@ The game is inspired by the atmosphere and themes of dark fantasy: dangerous roa
 - History/event tracking
 - NPC memory, reactions, and Faction reputation
 - Quest system
+- Base content loading and mod support foundation
 - Text-based user interface
 
 ## Core Concept
@@ -32,7 +33,8 @@ The goal is to make the world feel persistent rather than disposable.
 ```
 ashen_chronicle/
 ├── data/
-│   └── base_content.json
+│   ├── base_content.json
+│   └── mods/
 ├── src/
 │   ├── content.rs
 │   ├── game.rs

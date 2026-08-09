@@ -45,8 +45,8 @@ pub struct World {
     pub regions: Vec<Region>,
     pub locations: Vec<Location>,
     pub history: Vec<HistoryEntry>,
-    #[serde(default)]
-    pub completed_quest_titles: Vec<String>,
+    #[serde(default, alias = "completed_quest_titles")]
+    pub completed_quest_ids: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -136,6 +136,8 @@ pub struct Npc {
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Quest {
     pub id: EntityId,
+    #[serde(default)]
+    pub content_id: String,
     pub title: String,
     pub description: String,
     pub target_location_id: EntityId,
@@ -184,7 +186,7 @@ impl World {
             regions: Vec::new(),
             locations: Vec::new(),
             history: Vec::new(),
-            completed_quest_titles: Vec::new(),
+            completed_quest_ids: Vec::new(),
         }
     }
 
@@ -296,6 +298,7 @@ impl Npc {
 impl Quest {
     pub fn new(
         id: EntityId,
+        content_id: impl Into<String>,
         title: impl Into<String>,
         description: impl Into<String>,
         target_location_id: EntityId,
@@ -306,6 +309,7 @@ impl Quest {
     ) -> Self {
         Self {
             id,
+            content_id: content_id.into(),
             title: title.into(),
             description: description.into(),
             target_location_id,
@@ -346,17 +350,6 @@ pub fn create_inherited_state(state: &GameState, character_name: String, title: 
     let content = load_campaign_content();
     content.seed_world(&mut world);
     let character = world.spawn_character(character_name, title);
-    let inherited_deeds: Vec<String> = state
-        .quests
-        .iter()
-        .filter(|quest| quest.completed)
-        .map(|quest| quest.title.clone())
-        .collect();
-    for title in inherited_deeds {
-        if !world.completed_quest_titles.iter().any(|known| known == &title) {
-            world.completed_quest_titles.push(title);
-        }
-    }
     let turn = world.history.last().map(|entry| entry.turn).unwrap_or(0);
     world.record_history(turn, format!("{} inherited the world.", character.display_name()));
     let mut inherited_factions = state.factions.clone();
