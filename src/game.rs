@@ -43,7 +43,7 @@ pub fn run() -> std::io::Result<()> {
 }
 
 fn start_or_load(save_path: &PathBuf) -> std::io::Result<GameState> {
-    println!("The Ashen Chronicle v0.12.1");
+    println!("The Ashen Chronicle v0.13.0");
     println!("--------------------------------");
     if save_path.exists() {
         let choice = prompt("Load existing save? [y/N] ")?;
@@ -560,6 +560,9 @@ fn talk(state: &mut GameState) -> std::io::Result<()> {
 fn talk_to_npc(state: &mut GameState, npc_id: EntityId) -> std::io::Result<()> {
     let Some(npc_index) = npc_index_by_id(state, npc_id) else { return Ok(()); };
     let npc_name = state.npcs[npc_index].display_name();
+    if let Some(memory) = state.npcs[npc_index].memory.last() {
+        println!("{} remembers: {}", npc_name, memory);
+    }
     if let Some(portrait) = load_campaign_content().portrait_for(&state.npcs[npc_index].name) {
         println!("");
         println!("{}", portrait);
@@ -802,6 +805,7 @@ fn travel(state: &mut GameState) -> std::io::Result<()> {
             let character_name = state.character.display_name();
             state.world.record_history(state.character.turn, format!("{} traveled to {}.", character_name, location_name));
             println!("You travel to {}.", location_name);
+            random_travel_event(state, &location_name);
 
             if let Some(location) = location {
                 if location.dangerous {
@@ -816,6 +820,43 @@ fn travel(state: &mut GameState) -> std::io::Result<()> {
         }
     }
     Ok(())
+}
+
+fn random_travel_event(state: &mut GameState, location_name: &str) {
+    let tick = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.subsec_nanos() as usize)
+        .unwrap_or(0);
+    if tick % 4 != 0 {
+        return;
+    }
+
+    match (tick / 4) % 3 {
+        0 => {
+            println!("A black feather skitters across the road and catches on your boot.");
+            state.world.record_history(
+                state.character.turn,
+                format!("{} noticed a black feather while traveling to {}.", state.character.display_name(), location_name),
+            );
+            pause();
+        }
+        1 => {
+            println!("You spot an old trail marker half-buried in the ash.");
+            state.world.record_history(
+                state.character.turn,
+                format!("{} found an old trail marker while traveling to {}.", state.character.display_name(), location_name),
+            );
+            pause();
+        }
+        _ => {
+            println!("A distant cry follows you for a few steps, then fades.");
+            state.world.record_history(
+                state.character.turn,
+                format!("{} heard a distant cry while traveling to {}.", state.character.display_name(), location_name),
+            );
+            pause();
+        }
+    }
 }
 
 fn meditate_and_save(state: &mut GameState, save_path: &PathBuf) -> std::io::Result<()> {
@@ -977,7 +1018,7 @@ fn take_combat_damage(state: &mut GameState, damage: i32, enemy_name: &str, loca
 }
 
 fn notify_item_gain(item: &Item) {
-    println!("You gain: {}", item.name);
+    println!("You gain {}", item.name);
     println!("{}", item.description);
     print_item_visual(&item.name);
 }
@@ -1062,7 +1103,9 @@ fn search_remains(state: &mut GameState) -> std::io::Result<()> {
             grant_reward_reputation(state, &item);
             state.character.inventory.push(item);
         }
-        println!("Recovered: {}", item_names.join(", "));
+        println!("You feel a deja-vu looking at these items.");
+        println!("Found {}", item_names.join(", "));
+        println!("You feel as if they were once yours. Though, these items can be inherited, Their memories cannot.");
 
         state.character.turn += 1;
         state.world.record_history(
@@ -1180,13 +1223,13 @@ fn create_corpse(state: &mut GameState, epitaph: String) -> Corpse {
 }
 
 fn death_screen(state: &mut GameState, save_path: &PathBuf) -> std::io::Result<bool> {
-    println!("\n{} has died.", state.character.display_name());
+    death_legacy_screen(state);
     let options = vec![
         "Create a new world".to_string(),
         "Inherit this world with a new character".to_string(),
         "Save and quit".to_string(),
     ];
-    match choose_from_list("Death screen", &options, None)? {
+    match choose_from_list("What remains?", &options, None)? {
         Some(0) => {
             *state = create_from_prompts(WorldMode::New)?;
             Ok(true)
@@ -1202,4 +1245,96 @@ fn death_screen(state: &mut GameState, save_path: &PathBuf) -> std::io::Result<b
         }
         _ => Ok(false),
     }
+}
+
+fn death_legacy_screen(state: &GameState) {
+    const VARIANTS: [(&str, &str); 3] = [
+        (
+            "The body is still. The world is not.",
+            r#"        .-''''-.
+      .'  .--.  '.
+     /   /    \   \
+    |   |      |   |
+    |   |      |   |
+     \   \____/   /
+      '.        .'
+        '-.__.-'
+"#,
+        ),
+        (
+            "Your footprints end here. What you changed does not.",
+            r#"          .-.
+         /   \
+        | RIP |
+        |     |
+        |_____|
+          ||
+       ___||___
+"#,
+        ),
+        (
+            "One life has gone into the ash. The road remembers.",
+            r#"          _  _
+        _| || |_
+       |_  __  _|
+         | || |
+         | || |
+        _|_||_|_
+"#,
+        ),
+    ];
+    let tick = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.subsec_nanos() as usize)
+        .unwrap_or(0);
+    let (line, art) = VARIANTS[tick % VARIANTS.len()];
+    let character_name = state.character.display_name();
+    let location_name = state
+        .world
+        .location_by_id(state.character.location_id)
+        .map(|location| location.name.as_str())
+        .unwrap_or("an unknown place");
+
+    println!("\n{art}");
+    println!("{line}");
+    println!("\n{} died at {} on turn {}.", character_name, location_name, state.character.turn);
+
+    let completed: Vec<&str> = state
+        .world
+        .history
+        .iter()
+        .filter(|entry| entry.text.contains(&character_name) && entry.text.contains("completed "))
+        .map(|entry| entry.text.as_str())
+        .collect();
+    println!("\nDeeds remembered:");
+    if completed.is_empty() {
+        println!("  None recorded.");
+    } else {
+        for deed in completed.iter().take(5) {
+            println!("  - {}", deed);
+        }
+    }
+
+    println!("\nFaction standing at death:");
+    if state.factions.is_empty() {
+        println!("  None recorded.");
+    } else {
+        for faction in &state.factions {
+            println!("  - {} {:+}", faction.name, faction.reputation);
+        }
+    }
+
+    let dropped = state
+        .corpses
+        .last()
+        .map(|corpse| corpse.inventory.iter().map(|item| item.name.as_str()).collect::<Vec<_>>())
+        .unwrap_or_default();
+    println!("\nWhat remains on the body:");
+    if dropped.is_empty() {
+        println!("  Nothing worth carrying.");
+    } else {
+        println!("  {}", dropped.join(", "));
+    }
+    println!("\nThe next life will know none of this as memory. It can only be discovered.");
+    pause();
 }

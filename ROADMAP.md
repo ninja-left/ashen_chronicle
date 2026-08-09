@@ -271,6 +271,15 @@ Completed:
 - kept quitting non-destructive: `N`, `No`, or Enter returns to the game without changing state
 - bumped the project version to 0.12.1
 
+## v0.13.0 Gameplay polish and balance completion
+
+Completed:
+- added an atmospheric end-of-life screen with a concise summary of death location, remembered deeds, faction standing, and items left on the corpse
+- made previous-life traces discoverable through corpse recovery and NPC memories without restoring the dead character's quest log
+- added a small set of randomized, non-quest travel events to make repeated journeys less predictable without changing important quest outcomes
+- added explicit corpse/legacy feedback so inherited equipment is distinguished from information that must be rediscovered
+- retained the existing faction reputation split and prevented new characters from inheriting old reputation
+
 ## Tracking rule
 
 Use this roadmap as the main progress checklist. If a feature is not helping one of the current milestone goals, it should not become a priority yet.
