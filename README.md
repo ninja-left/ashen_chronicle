@@ -29,7 +29,7 @@ A later character may inherit that world and encounter what the previous charact
 The goal is to make the world feel persistent rather than disposable.
 
 ## Project Structure
-
+```
 ashen_chronicle/
 ├── src/
 │   ├── game.rs
@@ -43,16 +43,17 @@ ashen_chronicle/
 ├── ROADMAP.md
 ├── LICENSE
 └── README.md
-
-"model.rs" contains the core game data structures and world model.
+```
 
 "game.rs" contains the game logic and gameplay flow.
+
+"main.rs" is the application entry point.
+
+"model.rs" contains the core game data structures and world model.
 
 "persistence.rs" handles saving and loading the world.
 
 "ui.rs" handles the text-based interface and player interaction.
-
-"main.rs" is the application entry point.
 
 "DEVELOPMENT_PLAN.md" contains the project's detailed development rules and design direction.
 
