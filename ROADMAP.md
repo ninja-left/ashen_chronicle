@@ -141,6 +141,16 @@ Completed so far:
 Done when:
 - the game has enough variety for repeated runs without feeling empty
 
+## v0.8.1 Quest-system maintenance
+
+Completed:
+- new characters no longer inherit the previous character's personal quest log
+- completed quests are stored as persistent world deeds so later characters do not receive duplicate quests
+- existing completed quest records are migrated into persistent world deeds during bootstrap/inheritance
+- the main location description no longer prints a duplicate quest summary; Quest Log remains the dedicated quest view
+- required quest items are consumed when a quest is successfully turned in
+- fixed campaign quest bootstrapping so the shrine quest is not recreated on every load
+
 ## Phase 5: Data loading and mod foundation
 
 Goal: let content grow without turning code into a mess.

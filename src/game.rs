@@ -40,7 +40,7 @@ pub fn run() -> std::io::Result<()> {
 }
 
 fn start_or_load(save_path: &PathBuf) -> std::io::Result<GameState> {
-    println!("The Ashen Chronicle v0.8.0");
+    println!("The Ashen Chronicle v0.8.1");
     println!("--------------------------------");
     if save_path.exists() {
         let choice = prompt("Load existing save? [y/N] ")?;
@@ -213,33 +213,56 @@ fn ensure_campaign_npcs(state: &mut GameState) {
 }
 
 fn ensure_campaign_quests(state: &mut GameState) {
-    let shrine_id = location_id_by_name(&state.world, "Old Shrine");
-    let faction_id = faction_id_by_name(state, "Cinder Wardens");
-    let giver_npc_id = npc_id_by_name(state, "Mira");
-    let required_item_name = "Trophy from Old Shrine".to_string();
+    migrate_completed_quest_deeds(state);
+    ensure_quest(
+        state,
+        "Quiet the Old Shrine",
+        "The wardens want the shrine cleared of whatever woke there.",
+        "Old Shrine",
+        "Cinder Wardens",
+        "Mira",
+        "Trophy from Old Shrine",
+    );
+    ensure_quest(
+        state,
+        "Roots for the Market",
+        "Kes wants a fresh blackroot cutting from the hollow before the roots rot.",
+        "Blackroot Hollow",
+        "Hollow Market Kin",
+        "Kes",
+        "Rootbound Fang",
+    );
+    ensure_quest(
+        state,
+        "The Drowned Bell",
+        "Ilyra asks you to recover the bell clapper from the drowned chapel.",
+        "Drowned Chapel",
+        "Drowned Bell Covenant",
+        "Ilyra",
+        "Drowned Rosary",
+    );
+}
 
-    if let Some(quest) = quest_by_title_mut(state, "Quiet the Old Shrine") {
-        if quest.giver_npc_id == 0 {
-            if let Some(id) = giver_npc_id {
-                quest.giver_npc_id = id;
-            }
-        }
-        if quest.required_item_name.is_empty() {
-            quest.required_item_name = required_item_name.clone();
+fn migrate_completed_quest_deeds(state: &mut GameState) {
+    let completed_titles: Vec<String> = state
+        .quests
+        .iter()
+        .filter(|quest| quest.completed)
+        .map(|quest| quest.title.clone())
+        .collect();
+    for title in completed_titles {
+        if !state.world.completed_quest_titles.iter().any(|known| known == &title) {
+            state.world.completed_quest_titles.push(title);
         }
     }
-
-    if let (Some(shrine_id), Some(faction_id), Some(giver_npc_id)) = (shrine_id, faction_id, giver_npc_id) {
-        let id = state.world.allocate_id();
-        state.quests.push(Quest::new(id, "Quiet the Old Shrine", "The wardens want the shrine cleared of whatever woke there.", shrine_id, faction_id, giver_npc_id, required_item_name));
-    }
-
-    ensure_quest(state, "Roots for the Market", "Kes wants a fresh blackroot cutting from the hollow before the roots rot.", "Blackroot Hollow", "Hollow Market Kin", "Kes", "Rootbound Fang");
-    ensure_quest(state, "The Drowned Bell", "Ilyra asks you to recover the bell clapper from the drowned chapel.", "Drowned Chapel", "Drowned Bell Covenant", "Ilyra", "Drowned Rosary");
 }
 
 fn ensure_quest(state: &mut GameState, title: &str, description: &str, location: &str, faction: &str, giver: &str, item: &str) {
-    if state.quests.iter().any(|quest| quest.title == title) { return; }
+    if state.quests.iter().any(|quest| quest.title == title)
+        || state.world.completed_quest_titles.iter().any(|known| known == title)
+    {
+        return;
+    }
     if let (Some(location_id), Some(faction_id), Some(giver_npc_id)) = (
         location_id_by_name(&state.world, location), faction_id_by_name(state, faction), npc_id_by_name(state, giver)
     ) {
@@ -404,21 +427,6 @@ fn render_state(state: &GameState) {
             .collect();
         println!("Factions: {}", faction_lines.join(", "));
     }
-    let visible_quests: Vec<_> = state.quests.iter().filter(|quest| quest.offered || quest.completed).collect();
-    if !visible_quests.is_empty() {
-        let quest_lines: Vec<String> = visible_quests
-            .iter()
-            .map(|quest| {
-                let status = if quest.completed {
-                    if quest.reward_claimed { "completed" } else { "awaiting reward" }
-                } else {
-                    "active"
-                };
-                format!("{} [{}]", quest.title, status)
-            })
-            .collect();
-        println!("Quests: {}", quest_lines.join("; "));
-    }
     println!("History entries: {}", world.history.len());
 }
 
@@ -474,6 +482,9 @@ fn location_scene_for_npc(state: &mut GameState, npc_id: EntityId, location_id: 
             let quest = &state.quests[quest_index];
             (quest.offered, quest.completed, quest.required_item_name.clone(), quest.title.clone(), quest.description.clone(), quest.faction_id, quest.completed_by.clone())
         };
+        if state.world.completed_quest_titles.iter().any(|known| known == &title) {
+            continue;
+        }
         let has_required_item = state.character.inventory.iter().any(|item| item.name == required_item_name);
         if !offered {
             if let Some(quest) = state.quests.get_mut(quest_index) { quest.offered = true; }
@@ -485,6 +496,12 @@ fn location_scene_for_npc(state: &mut GameState, npc_id: EntityId, location_id: 
                 quest.completed = true;
                 quest.reward_claimed = true;
                 quest.completed_by = Some(current_character_name.clone());
+            }
+            if !state.world.completed_quest_titles.iter().any(|known| known == &title) {
+                state.world.completed_quest_titles.push(title.clone());
+            }
+            if let Some(item_index) = state.character.inventory.iter().position(|item| item.name == required_item_name) {
+                state.character.inventory.remove(item_index);
             }
             adjust_faction_reputation(state, quest_faction_id, 10, &format!("{} completed {}.", current_character_name, title));
             let reward_name = match title.as_str() {

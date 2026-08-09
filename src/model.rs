@@ -43,6 +43,8 @@ pub struct World {
     pub regions: Vec<Region>,
     pub locations: Vec<Location>,
     pub history: Vec<HistoryEntry>,
+    #[serde(default)]
+    pub completed_quest_titles: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -178,6 +180,7 @@ impl World {
             regions: Vec::new(),
             locations: Vec::new(),
             history: Vec::new(),
+            completed_quest_titles: Vec::new(),
         };
         world.seed_demo_world();
         world.record_history(0, "A new world stirs beneath ash and ruin.");
@@ -361,6 +364,17 @@ pub fn create_inherited_state(state: &GameState, character_name: String, title: 
     let mut world = state.world.clone();
     world.mode = WorldMode::Inherited;
     let character = world.spawn_character(character_name, title);
+    let inherited_deeds: Vec<String> = state
+        .quests
+        .iter()
+        .filter(|quest| quest.completed)
+        .map(|quest| quest.title.clone())
+        .collect();
+    for title in inherited_deeds {
+        if !world.completed_quest_titles.iter().any(|known| known == &title) {
+            world.completed_quest_titles.push(title);
+        }
+    }
     let turn = world.history.last().map(|entry| entry.turn).unwrap_or(0);
     world.record_history(turn, format!("{} inherited the world.", character.display_name()));
     GameState {
@@ -370,7 +384,7 @@ pub fn create_inherited_state(state: &GameState, character_name: String, title: 
         corpses: state.corpses.clone(),
         factions: state.factions.clone(),
         npcs: state.npcs.clone(),
-        quests: state.quests.clone(),
+        quests: Vec::new(),
         last_announced_location_id: None,
     }
 }
