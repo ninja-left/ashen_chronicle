@@ -521,7 +521,8 @@ fn talk_to_npc(state: &mut GameState, npc_id: EntityId) -> std::io::Result<()> {
             1 => {
                 let mut handled = false;
                 for quest_index in quest_indices {
-                    let (quest_key, title, offered, completed, required_item_name) = {
+                    // variable title is unused so changed it to _title
+                    let (quest_key, _title, offered, completed, required_item_name) = {
                         let quest = &state.quests[quest_index];
                         (
                             quest_key(quest).to_string(),
