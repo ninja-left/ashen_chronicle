@@ -44,7 +44,7 @@ pub fn run() -> std::io::Result<()> {
 }
 
 fn start_or_load(save_path: &PathBuf) -> std::io::Result<GameState> {
-    println!("The Ashen Chronicle v0.14.1");
+    println!("The Ashen Chronicle v0.14.2");
     println!("--------------------------------");
     if save_path.exists() {
         let choice = prompt("Load existing save? [y/N] ")?;
@@ -511,8 +511,19 @@ fn maybe_run_location_scene(state: &mut GameState) -> std::io::Result<()> {
     }
     state.last_announced_location_id = Some(location_id);
 
-    let mut lines = location_atmosphere(state, location_id);
+    let content = load_campaign_content();
+    let mut lines = location_art(&content, state, location_id);
+    let atmosphere = location_atmosphere(&content, state, location_id);
     let npc_ids = npc_ids_at_location(state, location_id);
+
+    if !lines.is_empty() && (!atmosphere.is_empty() || !npc_ids.is_empty()) {
+        lines.push(String::new());
+    }
+    lines.extend(atmosphere);
+    if !lines.is_empty() && !npc_ids.is_empty() {
+        lines.push(String::new());
+    }
+
     for npc_id in npc_ids {
         lines.extend(location_scene_for_npc(state, npc_id, location_id));
     }
@@ -525,9 +536,16 @@ fn maybe_run_location_scene(state: &mut GameState) -> std::io::Result<()> {
     Ok(())
 }
 
-fn location_atmosphere(state: &GameState, location_id: EntityId) -> Vec<String> {
+fn location_art(content: &CampaignContent, state: &GameState, location_id: EntityId) -> Vec<String> {
     let Some(location) = state.world.location_by_id(location_id) else { return Vec::new(); };
-    let content = load_campaign_content();
+    content
+        .location_art_for(&location.name)
+        .map(|art| art.lines().map(|line| line.to_string()).collect())
+        .unwrap_or_default()
+}
+
+fn location_atmosphere(content: &CampaignContent, state: &GameState, location_id: EntityId) -> Vec<String> {
+    let Some(location) = state.world.location_by_id(location_id) else { return Vec::new(); };
     content
         .atmosphere_for(&location.name)
         .map(|text| vec![text.to_string()])

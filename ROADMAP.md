@@ -308,3 +308,10 @@ Completed:
 - kept progression and conditions character-specific while world time persists through inheritance
 - added v1 save migration for the new progression/time fields
 - added small time-sensitive travel variation to exercise the new systems
+
+## v0.14.2 Location scene art presentation
+
+Completed:
+- rendered optional location scene art during arrival scenes so the player sees the place before the descriptive text
+- kept scene art fully optional and text-only fallback intact when no art is defined
+- reused the existing atmosphere and NPC scene flow so visual content layers cleanly onto the text systems
