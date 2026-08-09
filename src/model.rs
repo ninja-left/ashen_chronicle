@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use crate::content::load_campaign_content;
+
 pub type EntityId = u64;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -143,6 +145,8 @@ pub struct Quest {
     #[serde(default)]
     pub required_item_name: String,
     #[serde(default)]
+    pub reward_item_name: String,
+    #[serde(default)]
     pub completed_by: Option<String>,
     #[serde(default)]
     pub offered: bool,
@@ -172,7 +176,7 @@ pub struct GameState {
 
 impl World {
     pub fn new(name: &str, mode: WorldMode) -> Self {
-        let mut world = Self {
+        Self {
             id: 1,
             name: name.to_string(),
             mode,
@@ -181,10 +185,7 @@ impl World {
             locations: Vec::new(),
             history: Vec::new(),
             completed_quest_titles: Vec::new(),
-        };
-        world.seed_demo_world();
-        world.record_history(0, "A new world stirs beneath ash and ruin.");
-        world
+        }
     }
 
     pub fn allocate_id(&mut self) -> EntityId {
@@ -205,6 +206,14 @@ impl World {
         self.locations.iter_mut().find(|location| location.id == id)
     }
 
+    pub fn location_by_name(&self, name: &str) -> Option<&Location> {
+        self.locations.iter().find(|location| location.name == name)
+    }
+
+    pub fn location_by_name_mut(&mut self, name: &str) -> Option<&mut Location> {
+        self.locations.iter_mut().find(|location| location.name == name)
+    }
+
     pub fn location_is_dangerous(&self, id: EntityId) -> bool {
         self.location_by_id(id).map(|location| location.dangerous).unwrap_or(false)
     }
@@ -222,40 +231,6 @@ impl World {
         let location_id = self.locations.first().map(|loc| loc.id).unwrap_or(0);
         let character_id = self.allocate_id();
         Character::new(character_id, name, title, location_id)
-    }
-
-    fn seed_demo_world(&mut self) {
-        let region_id = self.allocate_id();
-        self.regions.push(Region {
-            id: region_id,
-            name: "The Ashen Crown".to_string(),
-            description: "A bleak frontier where old stone roads still cut through soot and cinder.".to_string(),
-            location_ids: Vec::new(),
-        });
-
-        let specs = [
-            ("Ashen Gate", "A cracked iron gate hanging between broken towers, staring over a dead road.", false),
-            ("Hollow Market", "Stalls without merchants, lanterns without flame, and the echo of old bargaining.", false),
-            ("Old Shrine", "A roofless shrine with a black altar and fresh soot on the floor.", true),
-            ("Charred Watchtower", "A leaning watchtower with a bell that rings when the wind changes.", false),
-            ("Mourning Fields", "A field of ash where pale grass grows around old burial stones.", false),
-            ("Blackroot Hollow", "A low ravine choked with black roots and the smell of wet iron.", true),
-            ("Drowned Chapel", "A half-sunken chapel whose bell chamber disappears beneath dark water.", true),
-            ("Sootbound Crossing", "A ruined road crossing where caravan tracks vanish into the cinder.", false),
-        ];
-        let ids: Vec<EntityId> = specs.iter().map(|(name, description, dangerous)| {
-            let id = self.allocate_id();
-            self.locations.push(Location { id, name: (*name).to_string(), description: (*description).to_string(), region_id, dangerous: *dangerous, corpse_ids: Vec::new(), exits: Vec::new() });
-            id
-        }).collect();
-        let (gate, market, shrine, tower, fields, hollow, chapel, crossing) = (ids[0],ids[1],ids[2],ids[3],ids[4],ids[5],ids[6],ids[7]);
-        let exits = [
-            (gate, vec![market,tower]), (market,vec![gate,shrine,crossing]), (shrine,vec![market,fields]),
-            (tower,vec![gate,fields]), (fields,vec![shrine,tower,hollow]), (hollow,vec![fields,chapel]),
-            (chapel,vec![hollow,crossing]), (crossing,vec![market,chapel]),
-        ];
-        for (id, targets) in exits { if let Some(location) = self.location_by_id_mut(id) { location.exits = targets; } }
-        self.regions[0].location_ids = ids;
     }
 }
 
@@ -327,6 +302,7 @@ impl Quest {
         faction_id: EntityId,
         giver_npc_id: EntityId,
         required_item_name: impl Into<String>,
+        reward_item_name: impl Into<String>,
     ) -> Self {
         Self {
             id,
@@ -336,6 +312,7 @@ impl Quest {
             faction_id,
             giver_npc_id,
             required_item_name: required_item_name.into(),
+            reward_item_name: reward_item_name.into(),
             completed_by: None,
             offered: false,
             completed: false,
@@ -346,6 +323,9 @@ impl Quest {
 
 pub fn create_new_state(world_name: &str, mode: WorldMode, character_name: String, title: String) -> GameState {
     let mut world = World::new(world_name, mode);
+    let content = load_campaign_content();
+    content.seed_world(&mut world);
+    world.record_history(0, "A new world stirs beneath ash and ruin.");
     let character = world.spawn_character(character_name, title);
     world.record_history(0, format!("{} entered the world.", character.display_name()));
     GameState {
@@ -363,6 +343,8 @@ pub fn create_new_state(world_name: &str, mode: WorldMode, character_name: Strin
 pub fn create_inherited_state(state: &GameState, character_name: String, title: String) -> GameState {
     let mut world = state.world.clone();
     world.mode = WorldMode::Inherited;
+    let content = load_campaign_content();
+    content.seed_world(&mut world);
     let character = world.spawn_character(character_name, title);
     let inherited_deeds: Vec<String> = state
         .quests

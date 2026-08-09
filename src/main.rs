@@ -1,3 +1,4 @@
+mod content;
 mod game;
 mod model;
 mod persistence;

@@ -178,6 +178,17 @@ Done when:
 - new content can be added mostly through data files
 - broken content is caught before it corrupts the game
 
+
+## v0.9.0 Data-loading foundation
+
+Completed:
+- added a runtime-loaded campaign content file under `data/base_content.json`
+- seeded the world from loaded content instead of hardcoded location bootstrap
+- added validation for duplicate content IDs and broken content references
+- moved NPC, faction, quest, atmosphere, and encounter definitions into the content pack
+- added stable content IDs to the base campaign data
+- kept existing save data compatible through defaulted quest fields
+
 ## Phase 6: Mod support
 
 Goal: make the game extensible by design.

@@ -31,7 +31,10 @@ The goal is to make the world feel persistent rather than disposable.
 ## Project Structure
 ```
 ashen_chronicle/
+├── data/
+│   └── base_content.json
 ├── src/
+│   ├── content.rs
 │   ├── game.rs
 │   ├── main.rs
 │   ├── model.rs

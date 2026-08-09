@@ -1,0 +1,252 @@
+{
+  "version": 1,
+  "world": {
+    "region": {
+      "id": "region.ashen_crown",
+      "name": "The Ashen Crown",
+      "description": "A bleak frontier where old stone roads still cut through soot and cinder."
+    },
+    "locations": [
+      {
+        "id": "location.ashen_gate",
+        "name": "Ashen Gate",
+        "description": "A cracked iron gate hanging between broken towers, staring over a dead road.",
+        "dangerous": false,
+        "exits": [
+          "location.hollow_market",
+          "location.charred_watchtower"
+        ]
+      },
+      {
+        "id": "location.hollow_market",
+        "name": "Hollow Market",
+        "description": "Stalls without merchants, lanterns without flame, and the echo of old bargaining.",
+        "dangerous": false,
+        "exits": [
+          "location.ashen_gate",
+          "location.old_shrine",
+          "location.sootbound_crossing"
+        ]
+      },
+      {
+        "id": "location.old_shrine",
+        "name": "Old Shrine",
+        "description": "A roofless shrine with a black altar and fresh soot on the floor.",
+        "dangerous": true,
+        "exits": [
+          "location.hollow_market",
+          "location.mourning_fields"
+        ]
+      },
+      {
+        "id": "location.charred_watchtower",
+        "name": "Charred Watchtower",
+        "description": "A leaning watchtower with a bell that rings when the wind changes.",
+        "dangerous": false,
+        "exits": [
+          "location.ashen_gate",
+          "location.mourning_fields"
+        ]
+      },
+      {
+        "id": "location.mourning_fields",
+        "name": "Mourning Fields",
+        "description": "A field of ash where pale grass grows around old burial stones.",
+        "dangerous": false,
+        "exits": [
+          "location.old_shrine",
+          "location.charred_watchtower",
+          "location.blackroot_hollow"
+        ]
+      },
+      {
+        "id": "location.blackroot_hollow",
+        "name": "Blackroot Hollow",
+        "description": "A low ravine choked with black roots and the smell of wet iron.",
+        "dangerous": true,
+        "exits": [
+          "location.mourning_fields",
+          "location.drowned_chapel"
+        ]
+      },
+      {
+        "id": "location.drowned_chapel",
+        "name": "Drowned Chapel",
+        "description": "A half-sunken chapel whose bell chamber disappears beneath dark water.",
+        "dangerous": true,
+        "exits": [
+          "location.blackroot_hollow",
+          "location.sootbound_crossing"
+        ]
+      },
+      {
+        "id": "location.sootbound_crossing",
+        "name": "Sootbound Crossing",
+        "description": "A ruined road crossing where caravan tracks vanish into the cinder.",
+        "dangerous": false,
+        "exits": [
+          "location.hollow_market",
+          "location.drowned_chapel"
+        ]
+      }
+    ]
+  },
+  "factions": [
+    {
+      "id": "faction.cinder_wardens",
+      "name": "Cinder Wardens"
+    },
+    {
+      "id": "faction.hollow_market_kin",
+      "name": "Hollow Market Kin"
+    },
+    {
+      "id": "faction.drowned_bell_covenant",
+      "name": "Drowned Bell Covenant"
+    }
+  ],
+  "npcs": [
+    {
+      "id": "npc.mira",
+      "name": "Mira",
+      "title": "Scout",
+      "location_name": "Hollow Market",
+      "faction_name": "Cinder Wardens",
+      "memory": [
+        "Keeps watch on the shrine road."
+      ]
+    },
+    {
+      "id": "npc.bram",
+      "name": "Bram",
+      "title": "Gatekeeper",
+      "location_name": "Ashen Gate",
+      "faction_name": "Hollow Market Kin",
+      "memory": [
+        "Counts every traveler who passes the gate."
+      ]
+    },
+    {
+      "id": "npc.ilyra",
+      "name": "Ilyra",
+      "title": "Bell Keeper",
+      "location_name": "Drowned Chapel",
+      "faction_name": "Drowned Bell Covenant",
+      "memory": [
+        "Listens for bells beneath the water."
+      ]
+    },
+    {
+      "id": "npc.tovin",
+      "name": "Tovin",
+      "title": "Grave Tender",
+      "location_name": "Mourning Fields",
+      "faction_name": "Cinder Wardens",
+      "memory": [
+        "Marks graves that the ash has not swallowed."
+      ]
+    },
+    {
+      "id": "npc.kes",
+      "name": "Kes",
+      "title": "Root Gatherer",
+      "location_name": "Blackroot Hollow",
+      "faction_name": "Hollow Market Kin",
+      "memory": [
+        "Trades medicines made from blackroot."
+      ]
+    }
+  ],
+  "quests": [
+    {
+      "id": "quest.quiet_old_shrine",
+      "title": "Quiet the Old Shrine",
+      "description": "The wardens want the shrine cleared of whatever woke there.",
+      "location_name": "Old Shrine",
+      "faction_name": "Cinder Wardens",
+      "giver_npc_name": "Mira",
+      "required_item_name": "Trophy from Old Shrine",
+      "reward_item_name": "Wardens' Seal"
+    },
+    {
+      "id": "quest.roots_for_market",
+      "title": "Roots for the Market",
+      "description": "Kes wants a fresh blackroot cutting from the hollow before the roots rot.",
+      "location_name": "Blackroot Hollow",
+      "faction_name": "Hollow Market Kin",
+      "giver_npc_name": "Kes",
+      "required_item_name": "Rootbound Fang",
+      "reward_item_name": "Rootworker's Token"
+    },
+    {
+      "id": "quest.drowned_bell",
+      "title": "The Drowned Bell",
+      "description": "Ilyra asks you to recover the bell clapper from the drowned chapel.",
+      "location_name": "Drowned Chapel",
+      "faction_name": "Drowned Bell Covenant",
+      "giver_npc_name": "Ilyra",
+      "required_item_name": "Drowned Rosary",
+      "reward_item_name": "Bell Covenant Charm"
+    }
+  ],
+  "encounters": [
+    {
+      "location_name": "Old Shrine",
+      "enemy_name": "Ashen Wretch",
+      "enemy_hp": 6,
+      "enemy_power": 2,
+      "trophy_item_name": "Trophy from Old Shrine",
+      "description": "A bent thing of ash and hunger tears at the altar steps."
+    },
+    {
+      "location_name": "Blackroot Hollow",
+      "enemy_name": "Rootbound Stalker",
+      "enemy_hp": 8,
+      "enemy_power": 2,
+      "trophy_item_name": "Rootbound Fang",
+      "description": "Something with bark-hard limbs stalks between the roots."
+    },
+    {
+      "location_name": "Drowned Chapel",
+      "enemy_name": "Drowned Penitent",
+      "enemy_hp": 10,
+      "enemy_power": 3,
+      "trophy_item_name": "Drowned Rosary",
+      "description": "A waterlogged shape rises from the nave, dragging a chain of prayer beads."
+    }
+  ],
+  "atmospheres": [
+    {
+      "location_name": "Ashen Gate",
+      "text": "Wind slips through the broken towers, carrying the smell of cold iron."
+    },
+    {
+      "location_name": "Hollow Market",
+      "text": "A shutter moves by itself. Somewhere behind the empty stalls, coins clink once."
+    },
+    {
+      "location_name": "Old Shrine",
+      "text": "Ash gathers in the altar's cracks. Whatever stirred here has not forgotten the road."
+    },
+    {
+      "location_name": "Charred Watchtower",
+      "text": "The watchtower bell gives a single dull knock, though no hand touches it."
+    },
+    {
+      "location_name": "Mourning Fields",
+      "text": "Pale grass bends around old stones, exposing scraps of names beneath the ash."
+    },
+    {
+      "location_name": "Blackroot Hollow",
+      "text": "Black roots shift under the soil with a sound like distant breathing."
+    },
+    {
+      "location_name": "Drowned Chapel",
+      "text": "Water laps against the chapel steps. Far below, something answers with a bell note."
+    },
+    {
+      "location_name": "Sootbound Crossing",
+      "text": "Old wheel tracks divide at the crossing, then vanish where the ash has been disturbed."
+    }
+  ]
+}

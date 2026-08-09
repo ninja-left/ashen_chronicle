@@ -1,3 +1,4 @@
+use crate::content::{load_campaign_content, CampaignContent};
 use crate::model::{
     create_inherited_state, create_new_state, Corpse, EntityId, Faction, GameState, Item, Npc,
     Quest, WorldMode,
@@ -41,7 +42,7 @@ pub fn run() -> std::io::Result<()> {
 }
 
 fn start_or_load(save_path: &PathBuf) -> std::io::Result<GameState> {
-    println!("The Ashen Chronicle v0.8.2");
+    println!("The Ashen Chronicle v0.9.0");
     println!("--------------------------------");
     if save_path.exists() {
         let choice = prompt("Load existing save? [y/N] ")?;
@@ -81,167 +82,74 @@ fn create_inherited_from_world(state: &GameState) -> std::io::Result<GameState> 
 }
 
 fn bootstrap_campaign_content(state: &mut GameState) {
-    ensure_campaign_locations(state);
-    ensure_campaign_factions(state);
-    ensure_campaign_npcs(state);
-    ensure_campaign_quests(state);
-}
-
-fn ensure_campaign_locations(state: &mut GameState) {
-    let region_id = state.world.regions.first().map(|region| region.id).unwrap_or_else(|| {
-        let id = state.world.allocate_id();
-        state.world.regions.push(crate::model::Region {
-            id,
-            name: "The Ashen Crown".to_string(),
-            description: "A bleak frontier where old stone roads still cut through soot and cinder.".to_string(),
-            location_ids: Vec::new(),
-        });
-        id
-    });
-
-    let location_specs = [
-        ("Charred Watchtower", "A leaning watchtower with a bell that rings when the wind changes.", false),
-        ("Mourning Fields", "A field of ash where pale grass grows around old burial stones.", false),
-        ("Blackroot Hollow", "A low ravine choked with black roots and the smell of wet iron.", true),
-        ("Drowned Chapel", "A half-sunken chapel whose bell chamber disappears beneath dark water.", true),
-        ("Sootbound Crossing", "A ruined road crossing where caravan tracks vanish into the cinder.", false),
-    ];
-
-    let mut added = Vec::new();
-    for (name, description, dangerous) in location_specs {
-        if location_id_by_name(&state.world, name).is_none() {
-            let id = state.world.allocate_id();
-            state.world.locations.push(crate::model::Location {
-                id,
-                name: name.to_string(),
-                description: description.to_string(),
-                region_id,
-                dangerous,
-                corpse_ids: Vec::new(),
-                exits: Vec::new(),
-            });
-            added.push(id);
+    let content = load_campaign_content();
+    let issues = content.validate();
+    if !issues.is_empty() {
+        eprintln!("Campaign content warnings:");
+        for issue in issues {
+            eprintln!("- {issue}");
         }
     }
-
-    let names = [
-        "Ashen Gate", "Hollow Market", "Old Shrine", "Charred Watchtower",
-        "Mourning Fields", "Blackroot Hollow", "Drowned Chapel", "Sootbound Crossing",
-    ];
-    let ids: Vec<EntityId> = names.iter().filter_map(|name| location_id_by_name(&state.world, name)).collect();
-    if ids.len() == names.len() {
-        let (gate, market, shrine, tower, fields, hollow, chapel, crossing) =
-            (ids[0], ids[1], ids[2], ids[3], ids[4], ids[5], ids[6], ids[7]);
-        set_exits(&mut state.world, gate, &[market, tower]);
-        set_exits(&mut state.world, market, &[gate, shrine, crossing]);
-        set_exits(&mut state.world, shrine, &[market, fields]);
-        set_exits(&mut state.world, tower, &[gate, fields]);
-        set_exits(&mut state.world, fields, &[shrine, tower, hollow]);
-        set_exits(&mut state.world, hollow, &[fields, chapel]);
-        set_exits(&mut state.world, chapel, &[hollow, crossing]);
-        set_exits(&mut state.world, crossing, &[market, chapel]);
-    }
-    let region_location_ids: Vec<EntityId> = state.world.locations.iter().filter(|location| location.region_id == region_id).map(|location| location.id).collect();
-    if let Some(region) = state.world.regions.iter_mut().find(|region| region.id == region_id) {
-        region.location_ids = region_location_ids;
-    }
-    if !added.is_empty() {
-        state.world.record_history(state.character.turn, "The old roads reveal forgotten places beyond the market and shrine.");
-    }
+    migrate_runtime_quest_data(state, &content);
+    ensure_campaign_factions(state, &content);
+    ensure_campaign_npcs(state, &content);
+    ensure_campaign_quests(state, &content);
 }
 
-fn set_exits(world: &mut crate::model::World, location_id: EntityId, exits: &[EntityId]) {
-    if let Some(location) = world.location_by_id_mut(location_id) {
-        location.exits = exits.to_vec();
-    }
-}
-
-fn ensure_campaign_factions(state: &mut GameState) {
-    if faction_by_name(state, "Cinder Wardens").is_none() {
-        let id = state.world.allocate_id();
-        state.factions.push(Faction::new(id, "Cinder Wardens"));
-    }
-
-    if faction_by_name(state, "Hollow Market Kin").is_none() {
-        let id = state.world.allocate_id();
-        state.factions.push(Faction::new(id, "Hollow Market Kin"));
-    }
-    if faction_by_name(state, "Drowned Bell Covenant").is_none() {
-        let id = state.world.allocate_id();
-        state.factions.push(Faction::new(id, "Drowned Bell Covenant"));
-    }
-}
-
-fn ensure_campaign_npcs(state: &mut GameState) {
-    if npc_by_name(state, "Mira").is_none() {
-        if let (Some(market_id), Some(faction_id)) = (
-            location_id_by_name(&state.world, "Hollow Market"),
-            faction_id_by_name(state, "Cinder Wardens"),
-        ) {
-            let id = state.world.allocate_id();
-            let mut npc = Npc::new(id, "Mira", "Scout", market_id, Some(faction_id));
-            npc.memory.push("Keeps watch on the shrine road.".to_string());
-            state.npcs.push(npc);
-        }
-    }
-
-    if npc_by_name(state, "Bram").is_none() {
-        if let (Some(gate_id), Some(faction_id)) = (
-            location_id_by_name(&state.world, "Ashen Gate"),
-            faction_id_by_name(state, "Hollow Market Kin"),
-        ) {
-            let id = state.world.allocate_id();
-            let mut npc = Npc::new(id, "Bram", "Gatekeeper", gate_id, Some(faction_id));
-            npc.memory.push("Counts every traveler who passes the gate.".to_string());
-            state.npcs.push(npc);
-        }
-    }
-    let extra_npcs = [
-        ("Ilyra", "Bell Keeper", "Drowned Chapel", "Drowned Bell Covenant", "Listens for bells beneath the water."),
-        ("Tovin", "Grave Tender", "Mourning Fields", "Cinder Wardens", "Marks graves that the ash has not swallowed."),
-        ("Kes", "Root Gatherer", "Blackroot Hollow", "Hollow Market Kin", "Trades medicines made from blackroot."),
-    ];
-    for (name, title, location_name, faction_name, memory) in extra_npcs {
-        if npc_by_name(state, name).is_none() {
-            if let (Some(location_id), Some(faction_id)) = (location_id_by_name(&state.world, location_name), faction_id_by_name(state, faction_name)) {
-                let id = state.world.allocate_id();
-                let mut npc = Npc::new(id, name, title, location_id, Some(faction_id));
-                npc.memory.push(memory.to_string());
-                state.npcs.push(npc);
+fn migrate_runtime_quest_data(state: &mut GameState, content: &CampaignContent) {
+    for quest in &mut state.quests {
+        if quest.reward_item_name.is_empty() {
+            if let Some(definition) = content.quests.iter().find(|entry| entry.title == quest.title) {
+                quest.reward_item_name = definition.reward_item_name.clone();
             }
         }
     }
 }
 
-fn ensure_campaign_quests(state: &mut GameState) {
+fn ensure_campaign_factions(state: &mut GameState, content: &CampaignContent) {
+    for faction in &content.factions {
+        if faction_by_name(state, &faction.name).is_none() {
+            let id = state.world.allocate_id();
+            state.factions.push(Faction::new(id, faction.name.clone()));
+        }
+    }
+}
+
+fn ensure_campaign_npcs(state: &mut GameState, content: &CampaignContent) {
+    for npc in &content.npcs {
+        if npc_by_name(state, &npc.name).is_some() {
+            continue;
+        }
+        let Some(location_id) = location_id_by_name(&state.world, &npc.location_name) else {
+            continue;
+        };
+        let faction_id = npc
+            .faction_name
+            .as_deref()
+            .and_then(|name| faction_id_by_name(state, name));
+        let id = state.world.allocate_id();
+        let mut runtime_npc = Npc::new(id, npc.name.clone(), npc.title.clone(), location_id, faction_id);
+        for memory in &npc.memory {
+            runtime_npc.memory.push(memory.clone());
+        }
+        state.npcs.push(runtime_npc);
+    }
+}
+
+fn ensure_campaign_quests(state: &mut GameState, content: &CampaignContent) {
     migrate_completed_quest_deeds(state);
-    ensure_quest(
-        state,
-        "Quiet the Old Shrine",
-        "The wardens want the shrine cleared of whatever woke there.",
-        "Old Shrine",
-        "Cinder Wardens",
-        "Mira",
-        "Trophy from Old Shrine",
-    );
-    ensure_quest(
-        state,
-        "Roots for the Market",
-        "Kes wants a fresh blackroot cutting from the hollow before the roots rot.",
-        "Blackroot Hollow",
-        "Hollow Market Kin",
-        "Kes",
-        "Rootbound Fang",
-    );
-    ensure_quest(
-        state,
-        "The Drowned Bell",
-        "Ilyra asks you to recover the bell clapper from the drowned chapel.",
-        "Drowned Chapel",
-        "Drowned Bell Covenant",
-        "Ilyra",
-        "Drowned Rosary",
-    );
+    for quest in &content.quests {
+        ensure_quest(
+            state,
+            &quest.title,
+            &quest.description,
+            &quest.location_name,
+            &quest.faction_name,
+            &quest.giver_npc_name,
+            &quest.required_item_name,
+            &quest.reward_item_name,
+        );
+    }
 }
 
 fn migrate_completed_quest_deeds(state: &mut GameState) {
@@ -258,7 +166,7 @@ fn migrate_completed_quest_deeds(state: &mut GameState) {
     }
 }
 
-fn ensure_quest(state: &mut GameState, title: &str, description: &str, location: &str, faction: &str, giver: &str, item: &str) {
+fn ensure_quest(state: &mut GameState, title: &str, description: &str, location: &str, faction: &str, giver: &str, item: &str, reward_item_name: &str) {
     if state.quests.iter().any(|quest| quest.title == title)
         || state.world.completed_quest_titles.iter().any(|known| known == title)
     {
@@ -268,7 +176,10 @@ fn ensure_quest(state: &mut GameState, title: &str, description: &str, location:
         location_id_by_name(&state.world, location), faction_id_by_name(state, faction), npc_id_by_name(state, giver)
     ) {
         let id = state.world.allocate_id();
-        state.quests.push(Quest::new(id, title, description, location_id, faction_id, giver_npc_id, item));
+        let mut quest = Quest::new(id, title, description, location_id, faction_id, giver_npc_id, item, reward_item_name);
+        // Content-driven quests begin unoffered and unfinished.
+        quest.offered = false;
+        state.quests.push(quest);
     }
 }
 
@@ -456,17 +367,11 @@ fn maybe_run_location_scene(state: &mut GameState) -> std::io::Result<()> {
 
 fn location_atmosphere(state: &GameState, location_id: EntityId) -> Vec<String> {
     let Some(location) = state.world.location_by_id(location_id) else { return Vec::new(); };
-    match location.name.as_str() {
-        "Ashen Gate" => vec!["Wind slips through the broken towers, carrying the smell of cold iron.".to_string()],
-        "Hollow Market" => vec!["A shutter moves by itself. Somewhere behind the empty stalls, coins clink once.".to_string()],
-        "Old Shrine" => vec!["Ash gathers in the altar's cracks. Whatever stirred here has not forgotten the road.".to_string()],
-        "Charred Watchtower" => vec!["The watchtower bell gives a single dull knock, though no hand touches it.".to_string()],
-        "Mourning Fields" => vec!["Pale grass bends around old stones, exposing scraps of names beneath the ash.".to_string()],
-        "Blackroot Hollow" => vec!["Black roots shift under the soil with a sound like distant breathing.".to_string()],
-        "Drowned Chapel" => vec!["Water laps against the chapel steps. Far below, something answers with a bell note.".to_string()],
-        "Sootbound Crossing" => vec!["Old wheel tracks divide at the crossing, then vanish where the ash has been disturbed.".to_string()],
-        _ => Vec::new(),
-    }
+    let content = load_campaign_content();
+    content
+        .atmosphere_for(&location.name)
+        .map(|text| vec![text.to_string()])
+        .unwrap_or_default()
 }
 
 fn location_scene_for_npc(state: &mut GameState, npc_id: EntityId, location_id: EntityId) -> Vec<String> {
@@ -611,14 +516,15 @@ fn complete_quest(state: &mut GameState, quest_index: usize) -> bool {
     // Reputation is split between doing the deed and carrying the faction's reward.
     adjust_faction_reputation(state, faction_id, 5, &format!("{} completed {}.", current_character_name, title));
 
-    let reward_name = match title.as_str() {
-        "Quiet the Old Shrine" => "Wardens' Seal",
-        "Roots for the Market" => "Rootworker's Token",
-        _ => "Bell Covenant Charm",
-    };
+    let reward_name = state
+        .quests
+        .get(quest_index)
+        .map(|quest| quest.reward_item_name.clone())
+        .filter(|name| !name.is_empty())
+        .unwrap_or_else(|| "Unnamed Reward".to_string());
     let reward = Item {
         id: state.world.allocate_id(),
-        name: reward_name.to_string(),
+        name: reward_name,
         description: format!("A token earned by completing {}.", title),
     };
     state.character.inventory.push(reward.clone());
@@ -773,7 +679,6 @@ fn confront_threat(state: &mut GameState) -> std::io::Result<()> {
 
     let (enemy_name, enemy_hp, enemy_power, trophy_name) = encounter_profile(&location.name);
     let mut encounter = CombatEncounter { enemy_name, enemy_hp, enemy_power, enemy_id: state.world.allocate_id() };
-    let trophy_name = trophy_name.to_string();
 
     println!("\nYou step into the threat.");
     println!("Enemy: {}", encounter.enemy_name);
@@ -859,12 +764,17 @@ fn confront_threat(state: &mut GameState) -> std::io::Result<()> {
     Ok(())
 }
 
-fn encounter_profile(location_name: &str) -> (String, i32, i32, &str) {
-    match location_name {
-        "Old Shrine" => ("Ashen Wretch".to_string(), 6, 2, "Trophy from Old Shrine"),
-        "Blackroot Hollow" => ("Rootbound Stalker".to_string(), 8, 2, "Rootbound Fang"),
-        "Drowned Chapel" => ("Drowned Penitent".to_string(), 10, 3, "Drowned Rosary"),
-        _ => ("Ash-Crazed Marauder".to_string(), 7, 2, "Marauder's Token"),
+fn encounter_profile(location_name: &str) -> (String, i32, i32, String) {
+    let content = load_campaign_content();
+    if let Some(profile) = content.encounter_for(location_name) {
+        (
+            profile.enemy_name.clone(),
+            profile.enemy_hp,
+            profile.enemy_power,
+            profile.trophy_item_name.clone(),
+        )
+    } else {
+        ("Ash-Crazed Marauder".to_string(), 7, 2, "Marauder's Token")
     }
 }
 
