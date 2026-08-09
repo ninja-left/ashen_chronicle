@@ -223,52 +223,36 @@ impl World {
 
     fn seed_demo_world(&mut self) {
         let region_id = self.allocate_id();
-        let region = Region {
+        self.regions.push(Region {
             id: region_id,
             name: "The Ashen Crown".to_string(),
             description: "A bleak frontier where old stone roads still cut through soot and cinder.".to_string(),
             location_ids: Vec::new(),
-        };
+        });
 
-        let gate_id = self.allocate_id();
-        let market_id = self.allocate_id();
-        let shrine_id = self.allocate_id();
-
-        let gate = Location {
-            id: gate_id,
-            name: "Ashen Gate".to_string(),
-            description: "A cracked iron gate hanging between broken towers, staring over a dead road.".to_string(),
-            region_id,
-            dangerous: false,
-            corpse_ids: Vec::new(),
-            exits: vec![market_id],
-        };
-        let market = Location {
-            id: market_id,
-            name: "Hollow Market".to_string(),
-            description: "Stalls without merchants, lanterns without flame, and the echo of old bargaining.".to_string(),
-            region_id,
-            dangerous: false,
-            corpse_ids: Vec::new(),
-            exits: vec![gate_id, shrine_id],
-        };
-        let shrine = Location {
-            id: shrine_id,
-            name: "Old Shrine".to_string(),
-            description: "A roofless shrine with a black altar and fresh soot on the floor.".to_string(),
-            region_id,
-            dangerous: true,
-            corpse_ids: Vec::new(),
-            exits: vec![market_id],
-        };
-
-        self.regions.push(region);
-        self.locations.push(gate);
-        self.locations.push(market);
-        self.locations.push(shrine);
-        if let Some(region) = self.regions.first_mut() {
-            region.location_ids = vec![gate_id, market_id, shrine_id];
-        }
+        let specs = [
+            ("Ashen Gate", "A cracked iron gate hanging between broken towers, staring over a dead road.", false),
+            ("Hollow Market", "Stalls without merchants, lanterns without flame, and the echo of old bargaining.", false),
+            ("Old Shrine", "A roofless shrine with a black altar and fresh soot on the floor.", true),
+            ("Charred Watchtower", "A leaning watchtower with a bell that rings when the wind changes.", false),
+            ("Mourning Fields", "A field of ash where pale grass grows around old burial stones.", false),
+            ("Blackroot Hollow", "A low ravine choked with black roots and the smell of wet iron.", true),
+            ("Drowned Chapel", "A half-sunken chapel whose bell chamber disappears beneath dark water.", true),
+            ("Sootbound Crossing", "A ruined road crossing where caravan tracks vanish into the cinder.", false),
+        ];
+        let ids: Vec<EntityId> = specs.iter().map(|(name, description, dangerous)| {
+            let id = self.allocate_id();
+            self.locations.push(Location { id, name: (*name).to_string(), description: (*description).to_string(), region_id, dangerous: *dangerous, corpse_ids: Vec::new(), exits: Vec::new() });
+            id
+        }).collect();
+        let (gate, market, shrine, tower, fields, hollow, chapel, crossing) = (ids[0],ids[1],ids[2],ids[3],ids[4],ids[5],ids[6],ids[7]);
+        let exits = [
+            (gate, vec![market,tower]), (market,vec![gate,shrine,crossing]), (shrine,vec![market,fields]),
+            (tower,vec![gate,fields]), (fields,vec![shrine,tower,hollow]), (hollow,vec![fields,chapel]),
+            (chapel,vec![hollow,crossing]), (crossing,vec![market,chapel]),
+        ];
+        for (id, targets) in exits { if let Some(location) = self.location_by_id_mut(id) { location.exits = targets; } }
+        self.regions[0].location_ids = ids;
     }
 }
 

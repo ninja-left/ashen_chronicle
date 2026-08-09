@@ -124,6 +124,20 @@ Work items:
 - more quest chains
 - better descriptive writing tools
 
+Status: complete.
+
+Completed so far:
+- the region expanded from 3 to 8 connected locations
+- three distinct dangerous locations now have different enemy profiles
+- additional enemy types and location-specific trophies were added
+- the item pool now contains multiple trophies and faction rewards
+- the faction roster expanded to three factions
+- the NPC roster expanded to five named NPCs with persistent memories
+- the quest system now supports multiple active quest chains using the same offer/turn-in rules
+- location arrival scenes provide distinct atmospheric events and descriptions
+- campaign bootstrap now backfills new content into older saved worlds instead of requiring a reset
+- campaign content definitions are centralized in the bootstrap layer to prepare for the later data-loading phase
+
 Done when:
 - the game has enough variety for repeated runs without feeling empty
 
