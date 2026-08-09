@@ -346,3 +346,25 @@ Completed:
 - rendered optional location scene art during arrival scenes so the player sees the place before the descriptive text
 - kept scene art fully optional and text-only fallback intact when no art is defined
 - reused the existing atmosphere and NPC scene flow so visual content layers cleanly onto the text systems
+
+## Phase 10: Keyboard interaction pass
+
+Goal: replace the remaining typed-number interaction flow with a keyboard-first terminal UI.
+
+Work items:
+- arrow-key and Enter navigation for menus
+- raw-mode text entry for prompts
+- clearer modal feedback for pauses and confirmations
+- keep scene art and narrative logs inside the same screen shell
+
+Status: in progress.
+
+## v0.16.0 Keyboard-driven interaction pass
+
+Completed:
+- replaced the blocking number-entry menus with keyboard-driven selection using arrows, Enter, Esc, and number shortcuts
+- added raw-mode text input so prompts work directly inside the TUI without falling back to scrollback interaction
+- changed pause handling to a single-key confirmation instead of Enter-only input
+- updated the on-screen control hint to match the new keyboard flow
+- bumped the project version to 0.16.0
+
