@@ -1,12 +1,14 @@
-use crate::model::{create_inherited_state, create_new_state, EntityId, GameState, Item, WorldMode};
+use crate::model::{create_inherited_state, create_new_state, Corpse, EntityId, GameState, Item, WorldMode};
 use crate::persistence::{load_game, save_game};
 use crate::ui::{choose_from_list, narrate, pause, prompt};
+use std::mem;
 use std::path::PathBuf;
 
 #[derive(Clone, Copy)]
 enum GameAction {
     Travel,
     ConfrontThreat,
+    SearchRemains,
     Meditate,
     Inventory,
     Journal,
@@ -33,11 +35,6 @@ struct CombatEncounter {
     enemy_id: EntityId,
 }
 
-fn notify_item_gain(item_name: &str, item_description: &str) {
-    println!("You gain: {}", item_name);
-    println!("{}", item_description);
-}
-
 pub fn run() -> std::io::Result<()> {
     let save_path = PathBuf::from("ashen_chronicle_save.json");
     let mut state = start_or_load(&save_path)?;
@@ -45,7 +42,7 @@ pub fn run() -> std::io::Result<()> {
 }
 
 fn start_or_load(save_path: &PathBuf) -> std::io::Result<GameState> {
-    println!("The Ashen Chronicle v0.5.0");
+    println!("The Ashen Chronicle v0.6.0");
     println!("--------------------------------");
     if save_path.exists() {
         let choice = prompt("Load existing save? [y/N] ")?;
@@ -77,7 +74,7 @@ fn create_inherited_from_world(state: &GameState) -> std::io::Result<GameState> 
     let character_name = if character_name.is_empty() { "Warden".to_string() } else { character_name };
     let title = prompt("New character title [Ashborn]: ")?;
     let title = if title.is_empty() { "Ashborn".to_string() } else { title };
-    Ok(create_inherited_state(state.world.clone(), character_name, title))
+    Ok(create_inherited_state(state, character_name, title))
 }
 
 fn main_loop(state: &mut GameState, save_path: &PathBuf) -> std::io::Result<()> {
@@ -96,6 +93,7 @@ fn main_loop(state: &mut GameState, save_path: &PathBuf) -> std::io::Result<()> 
             match menu[choice].action {
                 GameAction::Travel => travel(state)?,
                 GameAction::ConfrontThreat => confront_threat(state)?,
+                GameAction::SearchRemains => search_remains(state)?,
                 GameAction::Meditate => meditate_and_save(state, save_path)?,
                 GameAction::Inventory => show_inventory(state),
                 GameAction::Journal => write_note(state)?,
@@ -126,7 +124,20 @@ fn build_main_menu(state: &GameState) -> Vec<MenuEntry> {
         menu.insert(1, MenuEntry { label: "Face threat".to_string(), action: GameAction::ConfrontThreat });
     }
 
+    if has_unscavenged_remains_at_location(state) {
+        let insert_at = if state.threat.active { 2 } else { 1 };
+        menu.insert(insert_at, MenuEntry { label: "Search remains".to_string(), action: GameAction::SearchRemains });
+    }
+
     menu
+}
+
+fn has_unscavenged_remains_at_location(state: &GameState) -> bool {
+    let location_id = state.character.location_id;
+    state
+        .corpses
+        .iter()
+        .any(|corpse| corpse.location_id == location_id && !corpse.inventory.is_empty())
 }
 
 fn render_state(state: &GameState) {
@@ -144,6 +155,14 @@ fn render_state(state: &GameState) {
         if location.dangerous {
             println!("Danger: this place is unsafe.");
         }
+        let remains = corpses_at_location(state, location.id);
+        if !remains.is_empty() {
+            let names: Vec<String> = remains
+                .iter()
+                .map(|corpse| corpse_label(corpse))
+                .collect();
+            println!("Remains here: {}", names.join(", "));
+        }
         let exits: Vec<String> = location.exits.iter().filter_map(|id| world.location_by_id(*id).map(|loc| loc.name.clone())).collect();
         println!("Exits: {}", exits.join(", "));
     }
@@ -152,6 +171,24 @@ fn render_state(state: &GameState) {
         println!("{}", state.threat.description);
     }
     println!("History entries: {}", world.history.len());
+}
+
+fn corpses_at_location<'a>(state: &'a GameState, location_id: EntityId) -> Vec<&'a Corpse> {
+    state
+        .corpses
+        .iter()
+        .filter(|corpse| corpse.location_id == location_id)
+        .collect()
+}
+
+fn corpse_label(corpse: &Corpse) -> String {
+    if corpse.former_name.is_empty() {
+        "Unidentified remains".to_string()
+    } else if corpse.scavenged {
+        format!("{} the {} (searched)", corpse.former_name, corpse.former_title)
+    } else {
+        format!("{} the {}", corpse.former_name, corpse.former_title)
+    }
 }
 
 fn travel(state: &mut GameState) -> std::io::Result<()> {
@@ -253,11 +290,10 @@ fn confront_threat(state: &mut GameState) -> std::io::Result<()> {
             break;
         }
         if encounter.enemy_hp <= 0 {
-            let location_id = location.id;
-            let character_name = state.character.display_name();
             let enemy_name = encounter.enemy_name.clone();
+            let character_name = state.character.display_name();
             state.threat.clear();
-            if let Some(loc) = state.world.location_by_id_mut(location_id) {
+            if let Some(loc) = state.world.location_by_id_mut(location.id) {
                 loc.dangerous = false;
             }
             state.character.turn += 1;
@@ -267,10 +303,8 @@ fn confront_threat(state: &mut GameState) -> std::io::Result<()> {
                 name: format!("Trophy from {}", location.name),
                 description: "A proof that the danger here was confronted and survived.".to_string(),
             };
-            let item_name = item.name.clone();
-            let item_description = item.description.clone();
-            state.character.inventory.push(item);
-            notify_item_gain(&item_name, &item_description);
+            state.character.inventory.push(item.clone());
+            notify_item_gain(&item);
             narrate("The threat is broken. The place is quieter now.");
             break;
         }
@@ -321,12 +355,8 @@ fn confront_threat(state: &mut GameState) -> std::io::Result<()> {
         }
 
         if state.character.hp <= 0 {
-            state.character.alive = false;
-            let character_name = state.character.display_name();
-            state.world.record_history(
-                state.character.turn,
-                format!("{} fell to {} at {}.", character_name, encounter.enemy_name, location.name),
-            );
+            let location_name = location.name.clone();
+            mark_character_dead(state, format!("{} overcame them", encounter.enemy_name), &location_name);
             narrate("You were overwhelmed.");
             break;
         }
@@ -350,6 +380,80 @@ fn take_combat_damage(state: &mut GameState, damage: i32, enemy_name: &str, loca
     narrate(&format!("You take {} damage.", damage));
 }
 
+fn notify_item_gain(item: &Item) {
+    println!("You gain: {}", item.name);
+    println!("{}", item.description);
+}
+
+fn search_remains(state: &mut GameState) -> std::io::Result<()> {
+    let location_id = state.character.location_id;
+    let indices: Vec<usize> = state
+        .corpses
+        .iter()
+        .enumerate()
+        .filter(|(_, corpse)| corpse.location_id == location_id && !corpse.inventory.is_empty())
+        .map(|(index, _)| index)
+        .collect();
+
+    if indices.is_empty() {
+        println!("There are no remains worth searching here.");
+        pause();
+        return Ok(());
+    }
+
+    let options: Vec<String> = indices.iter().map(|index| corpse_label(&state.corpses[*index])).collect();
+    if let Some(choice) = choose_from_list("Search which remains?", &options, Some("Back"))? {
+        let corpse_index = indices[choice];
+        let location_name = state
+            .world
+            .location_by_id(location_id)
+            .map(|location| location.name.clone())
+            .unwrap_or_else(|| "this place".to_string());
+
+        let (former_name, former_title, items, corpse_id) = {
+            let corpse = &mut state.corpses[corpse_index];
+            let items = mem::take(&mut corpse.inventory);
+            corpse.scavenged = true;
+            (
+                corpse.former_name.clone(),
+                corpse.former_title.clone(),
+                items,
+                corpse.id,
+            )
+        };
+
+        println!("You search the remains at {}.", location_name);
+        if items.is_empty() {
+            println!("Nothing useful remains.");
+            state.world.record_history(
+                state.character.turn,
+                format!("{} searched the remains of {} the {} at {}.", state.character.display_name(), former_name, former_title, location_name),
+            );
+            pause();
+            return Ok(());
+        }
+
+        for item in items {
+            notify_item_gain(&item);
+            state.character.inventory.push(item);
+        }
+
+        state.character.turn += 1;
+        state.world.record_history(
+            state.character.turn,
+            format!("{} searched the remains of {} the {} at {}.", state.character.display_name(), former_name, former_title, location_name),
+        );
+        if let Some(location) = state.world.location_by_id_mut(location_id) {
+            if !location.corpse_ids.contains(&corpse_id) {
+                location.corpse_ids.push(corpse_id);
+            }
+        }
+        narrate("You gather what can still be carried.");
+    }
+
+    Ok(())
+}
+
 fn show_inventory(state: &GameState) {
     println!("\nInventory for {}", state.character.display_name());
     if state.character.inventory.is_empty() {
@@ -369,24 +473,61 @@ fn write_note(state: &mut GameState) -> std::io::Result<()> {
         state.character.turn += 1;
         let character_name = state.character.display_name();
         state.world.record_history(state.character.turn, format!("{} noted: {}", character_name, note));
+        narrate("The journal entry is recorded.");
     }
     Ok(())
 }
 
 fn force_death(state: &mut GameState) {
     state.character.hp = 0;
-    state.character.alive = false;
-    state.character.turn += 1;
     let location_name = state
         .world
         .location_by_id(state.character.location_id)
         .map(|location| location.name.clone())
         .unwrap_or_else(|| "an unknown place".to_string());
+    mark_character_dead(state, "a deliberate end".to_string(), &location_name);
+    narrate("The character falls.");
+}
+
+fn mark_character_dead(state: &mut GameState, cause: String, location_name: &str) {
+    if !state.character.alive {
+        return;
+    }
+
+    state.character.alive = false;
+    state.character.hp = 0;
+    let corpse = create_corpse(state, cause.clone());
+    let dropped_count = corpse.inventory.len();
+    state.corpses.push(corpse.clone());
+    if let Some(location) = state.world.location_by_id_mut(corpse.location_id) {
+        if !location.corpse_ids.contains(&corpse.id) {
+            location.corpse_ids.push(corpse.id);
+        }
+    }
+    let character_name = state.character.display_name();
     state.world.record_history(
         state.character.turn,
-        format!("{} died at {}.", state.character.display_name(), location_name),
+        format!("{} died at {} ({cause}).", character_name, location_name),
     );
-    narrate("The character falls.");
+    if dropped_count > 0 {
+        println!("{} item(s) were left behind.", dropped_count);
+    }
+}
+
+fn create_corpse(state: &mut GameState, epitaph: String) -> Corpse {
+    let corpse_id = state.world.allocate_id();
+    let location_id = state.character.location_id;
+    let inventory = mem::take(&mut state.character.inventory);
+    Corpse {
+        id: corpse_id,
+        former_name: state.character.name.clone(),
+        former_title: state.character.title.clone(),
+        location_id,
+        turn_of_death: state.character.turn,
+        inventory,
+        epitaph,
+        scavenged: false,
+    }
 }
 
 fn death_screen(state: &mut GameState, save_path: &PathBuf) -> std::io::Result<bool> {

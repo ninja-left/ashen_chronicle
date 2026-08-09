@@ -58,7 +58,7 @@ Work items:
 - death handling
 - new world or inherited world choice
 
-Status: in progress.
+Status: complete.
 
 Completed so far:
 - the player can move through a generated world
@@ -88,6 +88,17 @@ Work items:
 - history log
 - NPC memory basics
 - simple quest system
+
+Status: in progress.
+
+Completed so far:
+- corpses are created when a character dies
+- items drop into the corpse inventory instead of disappearing
+- corpse remains persist in the world after inheritance
+- locations show visible remains
+- the player can search remains and recover items
+- history records death, looting, and aftermath events
+- danger can be cleared by defeating a threat, changing the world state
 
 Done when:
 - the old character leaves visible traces in the world

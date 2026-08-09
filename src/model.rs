@@ -61,6 +61,8 @@ pub struct Location {
     pub region_id: EntityId,
     #[serde(default)]
     pub dangerous: bool,
+    #[serde(default)]
+    pub corpse_ids: Vec<EntityId>,
     pub exits: Vec<EntityId>,
 }
 
@@ -92,12 +94,27 @@ pub struct Item {
     pub description: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct Corpse {
+    pub id: EntityId,
+    pub former_name: String,
+    pub former_title: String,
+    pub location_id: EntityId,
+    pub turn_of_death: u32,
+    pub inventory: Vec<Item>,
+    pub epitaph: String,
+    #[serde(default)]
+    pub scavenged: bool,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GameState {
     pub world: World,
     pub character: Character,
     #[serde(default)]
     pub threat: ThreatState,
+    #[serde(default)]
+    pub corpses: Vec<Corpse>,
 }
 
 impl World {
@@ -172,6 +189,7 @@ impl World {
             description: "A cracked iron gate hanging between broken towers, staring over a dead road.".to_string(),
             region_id,
             dangerous: false,
+            corpse_ids: Vec::new(),
             exits: vec![market_id],
         };
         let market = Location {
@@ -180,6 +198,7 @@ impl World {
             description: "Stalls without merchants, lanterns without flame, and the echo of old bargaining.".to_string(),
             region_id,
             dangerous: false,
+            corpse_ids: Vec::new(),
             exits: vec![gate_id, shrine_id],
         };
         let shrine = Location {
@@ -188,6 +207,7 @@ impl World {
             description: "A roofless shrine with a black altar and fresh soot on the floor.".to_string(),
             region_id,
             dangerous: true,
+            corpse_ids: Vec::new(),
             exits: vec![market_id],
         };
 
@@ -234,10 +254,12 @@ pub fn create_new_state(world_name: &str, mode: WorldMode, character_name: Strin
         world,
         character,
         threat: ThreatState::default(),
+        corpses: Vec::new(),
     }
 }
 
-pub fn create_inherited_state(mut world: World, character_name: String, title: String) -> GameState {
+pub fn create_inherited_state(state: &GameState, character_name: String, title: String) -> GameState {
+    let mut world = state.world.clone();
     world.mode = WorldMode::Inherited;
     let character = world.spawn_character(character_name, title);
     let turn = world.history.last().map(|entry| entry.turn).unwrap_or(0);
@@ -246,5 +268,6 @@ pub fn create_inherited_state(mut world: World, character_name: String, title: S
         world,
         character,
         threat: ThreatState::default(),
+        corpses: state.corpses.clone(),
     }
 }
