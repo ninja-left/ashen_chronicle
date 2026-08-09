@@ -44,7 +44,7 @@ pub fn run() -> std::io::Result<()> {
 }
 
 fn start_or_load(save_path: &PathBuf) -> std::io::Result<GameState> {
-    println!("The Ashen Chronicle v0.14.0");
+    println!("The Ashen Chronicle v0.14.1");
     println!("--------------------------------");
     if save_path.exists() {
         let choice = prompt("Load existing save? [y/N] ")?;
@@ -459,7 +459,7 @@ fn render_state(state: &GameState) {
     println!("\n=== {} ===", world.name);
     println!("Character: {}", character.display_name());
     println!("HP: {}/{}", character.hp, character.max_hp);
-    println!("Time: {}", time_display(world.time_points, world.day));
+    println!("{}", time_display(world.time_points, world.day));
     if !character.conditions.is_empty() {
         let conditions: Vec<String> = character.conditions.iter().map(|c| format!("{} ({})", c.name, c.remaining)).collect();
         println!("Condition: {}", conditions.join(", "));
@@ -569,7 +569,7 @@ fn talk_to_npc(state: &mut GameState, npc_id: EntityId) -> std::io::Result<()> {
     let Some(npc_index) = npc_index_by_id(state, npc_id) else { return Ok(()); };
     let npc_name = state.npcs[npc_index].display_name();
     if !npc_is_available_now(state.world.time_points) {
-        println!("{} is not available at {}. The hour is too late.", npc_name, time_display(state.world.time_points, state.world.day));
+        println!("{}", npc_unavailable_message(&npc_name, state.world.time_points));
         pause();
         return Ok(());
     }
@@ -800,16 +800,50 @@ fn corpse_label(corpse: &Corpse) -> String {
 
 fn time_display(points: u32, day: u32) -> String {
     const PORTIONS: [&str; 12] = ["Deep Night", "Before Dawn", "Dawn", "Morning", "Late Morning", "High Sun", "Afternoon", "Late Afternoon", "Dusk", "Evening", "Night", "Midnight"];
-    const TRACK: [&str; 7] = ["E", ".", ".", ".", ".", ".", "W"];
+    const WIDTH: usize = 23;
     let slot = (points % 12) as usize;
-    let (label, icon) = match slot {
-        2..=8 => (PORTIONS[slot], "(O)"),
-        _ => (PORTIONS[slot], "(C)"),
+    let label = PORTIONS[slot];
+    let mut top = vec![' '; WIDTH];
+    let mut bottom = vec![' '; WIDTH];
+
+    let place = |line: &mut Vec<char>, idx: usize, ch: char| {
+        if idx < line.len() {
+            line[idx] = ch;
+        }
     };
-    let position = ((slot * 6 + 5) / 11).min(6);
-    let mut track = TRACK.map(str::to_string);
-    track[position] = icon.to_string();
-    format!("Day {} - {}  {}  {}  (O)=sun (C)=moon", day, label, track.join("---"), if slot < 9 { "Daylight" } else { "Night" })
+
+    match slot {
+        0 => place(&mut bottom, 20, '☾'),
+        1 => place(&mut bottom, 16, '☾'),
+        2 => place(&mut top, 16, '○'),
+        3 => place(&mut top, 13, '○'),
+        4 => place(&mut top, 10, '○'),
+        5 => place(&mut top, 7, '○'),
+        6 => place(&mut top, 4, '○'),
+        7 => place(&mut bottom, 4, '○'),
+        8 => place(&mut bottom, 7, '☾'),
+        9 => place(&mut bottom, 10, '☾'),
+        10 => place(&mut bottom, 13, '☾'),
+        11 => place(&mut bottom, 16, '☾'),
+        _ => unreachable!(),
+    }
+
+    let top: String = top.into_iter().collect();
+    let bottom: String = bottom.into_iter().collect();
+    let indicator = format!("E{}W", "=".repeat(WIDTH - 2));
+    format!("{}\n{}\n{}  Day {} | {}", top, bottom, indicator, day, label)
+}
+
+fn npc_unavailable_message(npc_name: &str, points: u32) -> String {
+    let slot = points % 12;
+    let (reason, hint) = match slot {
+        0 | 1 => ("It is too late in the night.", "Try again after dawn."),
+        10 | 11 => ("It is too late tonight.", "Try again in the morning."),
+        2..=5 => ("It is still too early in the day.", "Try again later today."),
+        6..=9 => ("It is too late in the day.", "Try again tomorrow morning."),
+        _ => ("They are unavailable right now.", "Try again later."),
+    };
+    format!("{} is not available right now. {} {}", npc_name, reason, hint)
 }
 
 fn advance_time(state: &mut GameState, amount: u32) {

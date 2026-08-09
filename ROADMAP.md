@@ -291,7 +291,7 @@ Goal: make each life develop over time while the world continues to age between 
 
 Status: in progress.
 
-## v0.14.0 Character progression, conditions, and time foundation
+## v0.14.1 Character progression, NPC availability, and Time foundation
 
 Completed:
 - added Might, Insight, and Endurance attributes with level-based progression
@@ -299,6 +299,9 @@ Completed:
 - added a character sheet for progression and condition visibility
 - added Wounded, Exhausted, and Well-rested conditions with gameplay effects
 - added a persistent world time cycle with named day/night portions, day count, and an east-to-west ASCII sun/moon track
+- replaced the time track with a compact two-line celestial cycle and a clear east-to-west indicator line
+- kept the sun and moon readable with plain Unicode symbols while hiding the internal time variable from player-facing text
+- improved unavailable NPC feedback so it explains whether it is too early or too late and hints when to check again
 - made travel, combat, searching, journaling, talking, and meditation advance hidden time portions
 - made meditation duration player-selected and tied healing directly to time spent
 - added time-sensitive NPC availability and travel atmosphere changes
