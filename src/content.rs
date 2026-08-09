@@ -1,4 +1,4 @@
-use crate::model::{EntityId, Location, Region, World};
+use crate::model::{Location, Region, World};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::env;

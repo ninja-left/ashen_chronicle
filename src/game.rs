@@ -220,10 +220,6 @@ fn npc_index_by_id(state: &GameState, npc_id: EntityId) -> Option<usize> {
     state.npcs.iter().position(|npc| npc.id == npc_id)
 }
 
-fn quest_by_title_mut<'a>(state: &'a mut GameState, title: &str) -> Option<&'a mut Quest> {
-    state.quests.iter_mut().find(|quest| quest.title == title)
-}
-
 fn main_loop(state: &mut GameState, save_path: &PathBuf) -> std::io::Result<()> {
     loop {
         if !state.character.alive {
@@ -774,7 +770,7 @@ fn encounter_profile(location_name: &str) -> (String, i32, i32, String) {
             profile.trophy_item_name.clone(),
         )
     } else {
-        ("Ash-Crazed Marauder".to_string(), 7, 2, "Marauder's Token")
+        ("Ash-Crazed Marauder".to_string(), 7, 2, "Marauder's Token".to_string())
     }
 }
 
@@ -814,19 +810,6 @@ fn update_faction_memory_for_location(state: &mut GameState, location_id: Entity
     faction_ids.dedup();
     for faction_id in faction_ids {
         remember_faction(state, faction_id, memory.clone());
-    }
-}
-
-fn update_faction_memory_for_faction(state: &mut GameState, faction_id: EntityId, memory: String) {
-    remember_faction(state, faction_id, memory.clone());
-    let npc_ids: Vec<EntityId> = state
-        .npcs
-        .iter()
-        .filter(|npc| npc.faction_id == Some(faction_id))
-        .map(|npc| npc.id)
-        .collect();
-    for npc_id in npc_ids {
-        remember_npc(state, npc_id, memory.clone());
     }
 }
 
