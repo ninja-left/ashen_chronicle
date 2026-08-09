@@ -14,7 +14,7 @@ macro_rules! println {
         crate::ui::line("");
     };
     ($($arg:tt)*) => {
-        crate::ui::line(&format!($($arg)*));
+        crate::ui::line(&format!($($arg)*))
     };
 }
 
