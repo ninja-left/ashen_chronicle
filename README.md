@@ -18,6 +18,7 @@ The game is inspired by the atmosphere and themes of dark fantasy: dangerous roa
 - Quest system
 - Base content loading and mod support foundation
 - Text-based user interface
+- Optional ASCII portraits, item art, and location scenes
 
 ## Core Concept
 

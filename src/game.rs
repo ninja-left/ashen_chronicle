@@ -42,7 +42,7 @@ pub fn run() -> std::io::Result<()> {
 }
 
 fn start_or_load(save_path: &PathBuf) -> std::io::Result<GameState> {
-    println!("The Ashen Chronicle v0.10.0");
+    println!("The Ashen Chronicle v0.11.0");
     println!("--------------------------------");
     if save_path.exists() {
         let choice = prompt("Load existing save? [y/N] ")?;
@@ -358,6 +358,10 @@ fn render_state(state: &GameState) {
         let region_name = world.region_by_id(location.region_id).map(|region| region.name.as_str()).unwrap_or("Unknown region");
         println!("Location: {} ({})", location.name, region_name);
         println!("{}", location.description);
+        if let Some(art) = load_campaign_content().location_art_for(&location.name) {
+            println!("");
+            println!("{}", art);
+        }
         if location.dangerous {
             println!("Danger: this place is unsafe.");
         }
@@ -461,6 +465,10 @@ fn talk(state: &mut GameState) -> std::io::Result<()> {
 fn talk_to_npc(state: &mut GameState, npc_id: EntityId) -> std::io::Result<()> {
     let Some(npc_index) = npc_index_by_id(state, npc_id) else { return Ok(()); };
     let npc_name = state.npcs[npc_index].display_name();
+    if let Some(portrait) = load_campaign_content().portrait_for(&state.npcs[npc_index].name) {
+        println!("");
+        println!("{}", portrait);
+    }
     let quest_indices: Vec<usize> = state
         .quests
         .iter()
@@ -521,7 +529,6 @@ fn talk_to_npc(state: &mut GameState, npc_id: EntityId) -> std::io::Result<()> {
             1 => {
                 let mut handled = false;
                 for quest_index in quest_indices {
-                    // variable title is unused so changed it to _title
                     let (quest_key, _title, offered, completed, required_item_name) = {
                         let quest = &state.quests[quest_index];
                         (
@@ -868,6 +875,14 @@ fn take_combat_damage(state: &mut GameState, damage: i32, enemy_name: &str, loca
 fn notify_item_gain(item: &Item) {
     println!("You gain: {}", item.name);
     println!("{}", item.description);
+    print_item_visual(&item.name);
+}
+
+fn print_item_visual(item_name: &str) {
+    if let Some(art) = load_campaign_content().item_art_for(item_name) {
+        println!("");
+        println!("{}", art);
+    }
 }
 
 fn update_faction_memory_for_location(state: &mut GameState, location_id: EntityId, memory: String) {
@@ -966,6 +981,9 @@ fn show_inventory(state: &GameState) {
     } else {
         for item in &state.character.inventory {
             println!("  - {}: {}", item.name, item.description);
+            if let Some(art) = load_campaign_content().item_art_for(&item.name) {
+                println!("{}", art);
+            }
         }
     }
     pause();

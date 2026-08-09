@@ -225,6 +225,15 @@ Work items:
 Done when:
 - visuals enhance the text instead of replacing it
 
+## v0.11.0 Optional visuals foundation
+
+Completed:
+- added optional ASCII portraits for NPCs
+- added optional location scene art
+- added optional item illustrations for rewards and trophies
+- kept visuals fully optional so the game still works as text-only when assets are missing
+
+
 ## Phase 8: Polish and balance
 
 Goal: turn the system into a real game.

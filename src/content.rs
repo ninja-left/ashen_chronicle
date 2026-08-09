@@ -23,6 +23,8 @@ pub struct CampaignContent {
     pub encounters: Vec<EncounterContent>,
     #[serde(default)]
     pub atmospheres: Vec<LocationAtmosphere>,
+    #[serde(default)]
+    pub item_visuals: Vec<ItemVisualContent>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -46,6 +48,8 @@ pub struct LocationContent {
     pub dangerous: bool,
     #[serde(default)]
     pub exits: Vec<String>,
+    #[serde(default)]
+    pub scene_art: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -64,6 +68,8 @@ pub struct NpcContent {
     pub faction_name: Option<String>,
     #[serde(default)]
     pub memory: Vec<String>,
+    #[serde(default)]
+    pub portrait: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -92,6 +98,12 @@ pub struct EncounterContent {
 pub struct LocationAtmosphere {
     pub location_name: String,
     pub text: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ItemVisualContent {
+    pub item_name: String,
+    pub art: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -132,6 +144,7 @@ impl CampaignContent {
         validate_unique_ids("faction", self.factions.iter().map(|entry| entry.id.as_str()), &mut issues);
         validate_unique_ids("npc", self.npcs.iter().map(|entry| entry.id.as_str()), &mut issues);
         validate_unique_ids("quest", self.quests.iter().map(|entry| entry.id.as_str()), &mut issues);
+        validate_unique_ids("item visual", self.item_visuals.iter().map(|entry| entry.item_name.as_str()), &mut issues);
 
         let location_names: HashSet<&str> = self.world.locations.iter().map(|entry| entry.name.as_str()).collect();
         let faction_names: HashSet<&str> = self.factions.iter().map(|entry| entry.name.as_str()).collect();
@@ -251,6 +264,28 @@ impl CampaignContent {
 
     pub fn encounter_for(&self, location_name: &str) -> Option<&EncounterContent> {
         self.encounters.iter().find(|entry| entry.location_name == location_name)
+    }
+
+    pub fn location_art_for(&self, location_name: &str) -> Option<&str> {
+        self.world
+            .locations
+            .iter()
+            .find(|entry| entry.name == location_name)
+            .and_then(|entry| entry.scene_art.as_deref())
+    }
+
+    pub fn portrait_for(&self, npc_name: &str) -> Option<&str> {
+        self.npcs
+            .iter()
+            .find(|entry| entry.name == npc_name)
+            .and_then(|entry| entry.portrait.as_deref())
+    }
+
+    pub fn item_art_for(&self, item_name: &str) -> Option<&str> {
+        self.item_visuals
+            .iter()
+            .find(|entry| entry.item_name == item_name)
+            .map(|entry| entry.art.as_str())
     }
 }
 
@@ -416,6 +451,7 @@ fn merge_campaign_content(base: &mut CampaignContent, incoming: CampaignContent)
     merge_vec_by_key(&mut base.quests, incoming.quests, |entry| entry.id.clone());
     merge_vec_by_key(&mut base.encounters, incoming.encounters, |entry| entry.location_name.clone());
     merge_vec_by_key(&mut base.atmospheres, incoming.atmospheres, |entry| entry.location_name.clone());
+    merge_vec_by_key(&mut base.item_visuals, incoming.item_visuals, |entry| entry.item_name.clone());
 }
 
 fn merge_vec_by_key<T, F>(base: &mut Vec<T>, incoming: Vec<T>, key_fn: F)
@@ -442,211 +478,6 @@ fn default_mod_content_file() -> String {
 }
 
 fn default_campaign_content() -> CampaignContent {
-    CampaignContent {
-        version: 1,
-        world: WorldContent {
-            region: RegionContent {
-                id: "region.ashen_crown".to_string(),
-                name: "The Ashen Crown".to_string(),
-                description: "A bleak frontier where old stone roads still cut through soot and cinder.".to_string(),
-            },
-            locations: vec![
-                LocationContent {
-                    id: "location.ashen_gate".to_string(),
-                    name: "Ashen Gate".to_string(),
-                    description: "A cracked iron gate hanging between broken towers, staring over a dead road.".to_string(),
-                    dangerous: false,
-                    exits: vec!["location.hollow_market".to_string(), "location.charred_watchtower".to_string()],
-                },
-                LocationContent {
-                    id: "location.hollow_market".to_string(),
-                    name: "Hollow Market".to_string(),
-                    description: "Stalls without merchants, lanterns without flame, and the echo of old bargaining.".to_string(),
-                    dangerous: false,
-                    exits: vec!["location.ashen_gate".to_string(), "location.old_shrine".to_string(), "location.sootbound_crossing".to_string()],
-                },
-                LocationContent {
-                    id: "location.old_shrine".to_string(),
-                    name: "Old Shrine".to_string(),
-                    description: "A roofless shrine with a black altar and fresh soot on the floor.".to_string(),
-                    dangerous: true,
-                    exits: vec!["location.hollow_market".to_string(), "location.mourning_fields".to_string()],
-                },
-                LocationContent {
-                    id: "location.charred_watchtower".to_string(),
-                    name: "Charred Watchtower".to_string(),
-                    description: "A leaning watchtower with a bell that rings when the wind changes.".to_string(),
-                    dangerous: false,
-                    exits: vec!["location.ashen_gate".to_string(), "location.mourning_fields".to_string()],
-                },
-                LocationContent {
-                    id: "location.mourning_fields".to_string(),
-                    name: "Mourning Fields".to_string(),
-                    description: "A field of ash where pale grass grows around old burial stones.".to_string(),
-                    dangerous: false,
-                    exits: vec!["location.old_shrine".to_string(), "location.charred_watchtower".to_string(), "location.blackroot_hollow".to_string()],
-                },
-                LocationContent {
-                    id: "location.blackroot_hollow".to_string(),
-                    name: "Blackroot Hollow".to_string(),
-                    description: "A low ravine choked with black roots and the smell of wet iron.".to_string(),
-                    dangerous: true,
-                    exits: vec!["location.mourning_fields".to_string(), "location.drowned_chapel".to_string()],
-                },
-                LocationContent {
-                    id: "location.drowned_chapel".to_string(),
-                    name: "Drowned Chapel".to_string(),
-                    description: "A half-sunken chapel whose bell chamber disappears beneath dark water.".to_string(),
-                    dangerous: true,
-                    exits: vec!["location.blackroot_hollow".to_string(), "location.sootbound_crossing".to_string()],
-                },
-                LocationContent {
-                    id: "location.sootbound_crossing".to_string(),
-                    name: "Sootbound Crossing".to_string(),
-                    description: "A ruined road crossing where caravan tracks vanish into the cinder.".to_string(),
-                    dangerous: false,
-                    exits: vec!["location.hollow_market".to_string(), "location.drowned_chapel".to_string()],
-                },
-            ],
-        },
-        factions: vec![
-            FactionContent { id: "faction.cinder_wardens".to_string(), name: "Cinder Wardens".to_string() },
-            FactionContent { id: "faction.hollow_market_kin".to_string(), name: "Hollow Market Kin".to_string() },
-            FactionContent { id: "faction.drowned_bell_covenant".to_string(), name: "Drowned Bell Covenant".to_string() },
-        ],
-        npcs: vec![
-            NpcContent {
-                id: "npc.mira".to_string(),
-                name: "Mira".to_string(),
-                title: "Scout".to_string(),
-                location_name: "Hollow Market".to_string(),
-                faction_name: Some("Cinder Wardens".to_string()),
-                memory: vec!["Keeps watch on the shrine road.".to_string()],
-            },
-            NpcContent {
-                id: "npc.bram".to_string(),
-                name: "Bram".to_string(),
-                title: "Gatekeeper".to_string(),
-                location_name: "Ashen Gate".to_string(),
-                faction_name: Some("Hollow Market Kin".to_string()),
-                memory: vec!["Counts every traveler who passes the gate.".to_string()],
-            },
-            NpcContent {
-                id: "npc.ilyra".to_string(),
-                name: "Ilyra".to_string(),
-                title: "Bell Keeper".to_string(),
-                location_name: "Drowned Chapel".to_string(),
-                faction_name: Some("Drowned Bell Covenant".to_string()),
-                memory: vec!["Listens for bells beneath the water.".to_string()],
-            },
-            NpcContent {
-                id: "npc.tovin".to_string(),
-                name: "Tovin".to_string(),
-                title: "Grave Tender".to_string(),
-                location_name: "Mourning Fields".to_string(),
-                faction_name: Some("Cinder Wardens".to_string()),
-                memory: vec!["Marks graves that the ash has not swallowed.".to_string()],
-            },
-            NpcContent {
-                id: "npc.kes".to_string(),
-                name: "Kes".to_string(),
-                title: "Root Gatherer".to_string(),
-                location_name: "Blackroot Hollow".to_string(),
-                faction_name: Some("Hollow Market Kin".to_string()),
-                memory: vec!["Trades medicines made from blackroot.".to_string()],
-            },
-        ],
-        quests: vec![
-            QuestContent {
-                id: "quest.quiet_old_shrine".to_string(),
-                title: "Quiet the Old Shrine".to_string(),
-                description: "The wardens want the shrine cleared of whatever woke there.".to_string(),
-                location_name: "Old Shrine".to_string(),
-                faction_name: "Cinder Wardens".to_string(),
-                giver_npc_name: "Mira".to_string(),
-                required_item_name: "Trophy from Old Shrine".to_string(),
-                reward_item_name: "Wardens' Seal".to_string(),
-            },
-            QuestContent {
-                id: "quest.roots_for_market".to_string(),
-                title: "Roots for the Market".to_string(),
-                description: "Kes wants a fresh blackroot cutting from the hollow before the roots rot.".to_string(),
-                location_name: "Blackroot Hollow".to_string(),
-                faction_name: "Hollow Market Kin".to_string(),
-                giver_npc_name: "Kes".to_string(),
-                required_item_name: "Rootbound Fang".to_string(),
-                reward_item_name: "Rootworker's Token".to_string(),
-            },
-            QuestContent {
-                id: "quest.drowned_bell".to_string(),
-                title: "The Drowned Bell".to_string(),
-                description: "Ilyra asks you to recover the bell clapper from the drowned chapel.".to_string(),
-                location_name: "Drowned Chapel".to_string(),
-                faction_name: "Drowned Bell Covenant".to_string(),
-                giver_npc_name: "Ilyra".to_string(),
-                required_item_name: "Drowned Rosary".to_string(),
-                reward_item_name: "Bell Covenant Charm".to_string(),
-            },
-        ],
-        encounters: vec![
-            EncounterContent {
-                location_name: "Old Shrine".to_string(),
-                enemy_name: "Ashen Wretch".to_string(),
-                enemy_hp: 6,
-                enemy_power: 2,
-                trophy_item_name: "Trophy from Old Shrine".to_string(),
-                description: "A bent thing of ash and hunger tears at the altar steps.".to_string(),
-            },
-            EncounterContent {
-                location_name: "Blackroot Hollow".to_string(),
-                enemy_name: "Rootbound Stalker".to_string(),
-                enemy_hp: 8,
-                enemy_power: 2,
-                trophy_item_name: "Rootbound Fang".to_string(),
-                description: "Something with bark-hard limbs stalks between the roots.".to_string(),
-            },
-            EncounterContent {
-                location_name: "Drowned Chapel".to_string(),
-                enemy_name: "Drowned Penitent".to_string(),
-                enemy_hp: 10,
-                enemy_power: 3,
-                trophy_item_name: "Drowned Rosary".to_string(),
-                description: "A waterlogged shape rises from the nave, dragging a chain of prayer beads.".to_string(),
-            },
-        ],
-        atmospheres: vec![
-            LocationAtmosphere {
-                location_name: "Ashen Gate".to_string(),
-                text: "Wind slips through the broken towers, carrying the smell of cold iron.".to_string(),
-            },
-            LocationAtmosphere {
-                location_name: "Hollow Market".to_string(),
-                text: "A shutter moves by itself. Somewhere behind the empty stalls, coins clink once.".to_string(),
-            },
-            LocationAtmosphere {
-                location_name: "Old Shrine".to_string(),
-                text: "Ash gathers in the altar's cracks. Whatever stirred here has not forgotten the road.".to_string(),
-            },
-            LocationAtmosphere {
-                location_name: "Charred Watchtower".to_string(),
-                text: "The watchtower bell gives a single dull knock, though no hand touches it.".to_string(),
-            },
-            LocationAtmosphere {
-                location_name: "Mourning Fields".to_string(),
-                text: "Pale grass bends around old stones, exposing scraps of names beneath the ash.".to_string(),
-            },
-            LocationAtmosphere {
-                location_name: "Blackroot Hollow".to_string(),
-                text: "Roots flex under the soil as if the ground itself is breathing.".to_string(),
-            },
-            LocationAtmosphere {
-                location_name: "Drowned Chapel".to_string(),
-                text: "Dark water laps at the pews while the chapel bell stays silent below the surface.".to_string(),
-            },
-            LocationAtmosphere {
-                location_name: "Sootbound Crossing".to_string(),
-                text: "Old wagon ruts vanish into the cinder as if the road never existed.".to_string(),
-            },
-        ],
-    }
+    serde_json::from_str(include_str!("../data/base_content.json"))
+        .expect("embedded base content JSON must remain valid")
 }
