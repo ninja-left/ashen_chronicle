@@ -12,6 +12,11 @@ pub fn pause() {
     let _ = prompt("Press Enter to continue...");
 }
 
+pub fn narrate(message: &str) {
+    println!("{message}");
+    pause();
+}
+
 pub fn choose_from_list(title: &str, options: &[String], zero_label: Option<&str>) -> io::Result<Option<usize>> {
     println!("\n{title}");
     for (index, option) in options.iter().enumerate() {

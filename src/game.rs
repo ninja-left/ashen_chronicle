@@ -1,6 +1,6 @@
 use crate::model::{create_inherited_state, create_new_state, EntityId, GameState, Item, WorldMode};
 use crate::persistence::{load_game, save_game};
-use crate::ui::{choose_from_list, pause, prompt};
+use crate::ui::{choose_from_list, narrate, pause, prompt};
 use std::path::PathBuf;
 
 #[derive(Clone, Copy)]
@@ -33,6 +33,11 @@ struct CombatEncounter {
     enemy_id: EntityId,
 }
 
+fn notify_item_gain(item_name: &str, item_description: &str) {
+    println!("You gain: {}", item_name);
+    println!("{}", item_description);
+}
+
 pub fn run() -> std::io::Result<()> {
     let save_path = PathBuf::from("ashen_chronicle_save.json");
     let mut state = start_or_load(&save_path)?;
@@ -40,7 +45,7 @@ pub fn run() -> std::io::Result<()> {
 }
 
 fn start_or_load(save_path: &PathBuf) -> std::io::Result<GameState> {
-    println!("The Ashen Chronicle v0.4.0");
+    println!("The Ashen Chronicle v0.5.0");
     println!("--------------------------------");
     if save_path.exists() {
         let choice = prompt("Load existing save? [y/N] ")?;
@@ -188,7 +193,7 @@ fn travel(state: &mut GameState) -> std::io::Result<()> {
                         format!("{} stirs", location.name),
                         "The air is tense. Something here is still awake.".to_string(),
                     );
-                    println!("This place is dangerous.");
+                    narrate("This place is dangerous.");
                 }
             }
         }
@@ -209,7 +214,11 @@ fn meditate_and_save(state: &mut GameState, save_path: &PathBuf) -> std::io::Res
     let character_name = state.character.display_name();
     state.world.record_history(state.character.turn, format!("{} meditated and recovered.", character_name));
     save_game(save_path, state)?;
-    println!("You settle your breathing, recover to {}/{}, and save the game.", state.character.hp, state.character.max_hp);
+    narrate(&format!(
+        "You settle your breathing, recover to {}/{}, and save the game.",
+        state.character.hp,
+        state.character.max_hp
+    ));
     Ok(())
 }
 
@@ -253,12 +262,16 @@ fn confront_threat(state: &mut GameState) -> std::io::Result<()> {
             }
             state.character.turn += 1;
             state.world.record_history(state.character.turn, format!("{} defeated {} at {}.", character_name, enemy_name, location.name));
-            state.character.inventory.push(Item {
+            let item = Item {
                 id: encounter.enemy_id,
                 name: format!("Trophy from {}", location.name),
                 description: "A proof that the danger here was confronted and survived.".to_string(),
-            });
-            println!("The threat is broken. The place is quieter now.");
+            };
+            let item_name = item.name.clone();
+            let item_description = item.description.clone();
+            state.character.inventory.push(item);
+            notify_item_gain(&item_name, &item_description);
+            narrate("The threat is broken. The place is quieter now.");
             break;
         }
 
@@ -291,7 +304,7 @@ fn confront_threat(state: &mut GameState) -> std::io::Result<()> {
                 if retaliation > 0 {
                     take_combat_damage(state, retaliation, &encounter.enemy_name, &location.name);
                 } else {
-                    println!("You brace yourself and hold the line.");
+                    narrate("You brace yourself and hold the line.");
                 }
             }
             Some(2) => {
@@ -301,7 +314,7 @@ fn confront_threat(state: &mut GameState) -> std::io::Result<()> {
                     state.character.turn,
                     format!("{} fled from {} at {}.", character_name, encounter.enemy_name, location.name),
                 );
-                println!("You back away and the threat remains.");
+                narrate("You back away and the threat remains.");
                 break;
             }
             _ => {}
@@ -314,7 +327,7 @@ fn confront_threat(state: &mut GameState) -> std::io::Result<()> {
                 state.character.turn,
                 format!("{} fell to {} at {}.", character_name, encounter.enemy_name, location.name),
             );
-            println!("You were overwhelmed.");
+            narrate("You were overwhelmed.");
             break;
         }
     }
@@ -324,7 +337,7 @@ fn confront_threat(state: &mut GameState) -> std::io::Result<()> {
 
 fn take_combat_damage(state: &mut GameState, damage: i32, enemy_name: &str, location_name: &str) {
     if damage <= 0 {
-        println!("The blow glances off harmlessly.");
+        narrate("The blow glances off harmlessly.");
         return;
     }
 
@@ -334,7 +347,7 @@ fn take_combat_damage(state: &mut GameState, damage: i32, enemy_name: &str, loca
         state.character.turn,
         format!("{} took {} damage from {} at {}.", character_name, damage, enemy_name, location_name),
     );
-    println!("You take {} damage.", damage);
+    narrate(&format!("You take {} damage.", damage));
 }
 
 fn show_inventory(state: &GameState) {
@@ -373,7 +386,7 @@ fn force_death(state: &mut GameState) {
         state.character.turn,
         format!("{} died at {}.", state.character.display_name(), location_name),
     );
-    println!("The character falls.");
+    narrate("The character falls.");
 }
 
 fn death_screen(state: &mut GameState, save_path: &PathBuf) -> std::io::Result<bool> {

@@ -68,6 +68,8 @@ Completed so far:
 - a basic threat interaction exists
 - threat resolution now has a real combat loop
 - defeating a threat can clear danger and leave a trophy item behind
+- item pickups now notify the player directly
+- major action results now pause on screen so the text does not get skipped
 
 Done when:
 - the player can move through a generated world
