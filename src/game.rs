@@ -7,6 +7,7 @@ use crate::persistence::{load_game, save_game};
 use crate::ui::{choose_from_list, narrate, pause, prompt};
 use std::mem;
 use std::path::PathBuf;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Clone, Copy)]
 enum GameAction {
@@ -42,7 +43,7 @@ pub fn run() -> std::io::Result<()> {
 }
 
 fn start_or_load(save_path: &PathBuf) -> std::io::Result<GameState> {
-    println!("The Ashen Chronicle v0.12.0");
+    println!("The Ashen Chronicle v0.12.1");
     println!("--------------------------------");
     if save_path.exists() {
         let choice = prompt("Load existing save? [y/N] ")?;
@@ -330,8 +331,7 @@ fn main_loop(state: &mut GameState, save_path: &PathBuf) -> std::io::Result<()> 
                 GameAction::Journal => write_note(state)?,
                 GameAction::TestDeath => force_death(state),
                 GameAction::Quit => {
-                    let answer = prompt("Quit without saving? [y/N] ")?;
-                    if answer.eq_ignore_ascii_case("y") {
+                    if quit_screen()? {
                         break;
                     }
                 }
@@ -341,6 +341,82 @@ fn main_loop(state: &mut GameState, save_path: &PathBuf) -> std::io::Result<()> 
     Ok(())
 }
 
+fn quit_screen() -> std::io::Result<bool> {
+    const VARIANTS: [(&str, &str, &str); 4] = [
+        (
+            "The road ends here.\nFor tonight, anyway.",
+            "[Y] Let the ashes take it.\n[N] Not yet. The night has more to say.",
+            r#"        .-''''-.
+       /  .--.  \
+      /  /    \  \
+      | |      | |
+      | |      | |
+      |  \____/  |
+       \        /
+        '------'
+"#,
+        ),
+        (
+            "The fire is dying.\nYour story does not have to.",
+            "[Y] Close the book.\n[N] Turn the page.",
+            r#"          /\
+         /  \
+        / /\ \
+       / /  \ \
+      /_/____\_\
+        ||  ||
+        ||  ||
+        ||  ||
+       _||__||_
+"#,
+        ),
+        (
+            "Night has swallowed the road.\nOnly your footprints remain.",
+            "[Y] Leave them to the dark.\n[N] Keep walking.",
+            r#"       _..._       _..._
+     .-'     '-. .-'     '-.
+    /           V           \
+   /      _           _      \
+   |     (_)         (_)     |
+   |          .---.          |
+    \        /     \        /
+     '-._____'-----'_____.-'
+"#,
+        ),
+        (
+            "The last ember has gone black.\nThe silence is waiting.",
+            "[Y] Let it be silent.\n[N] Break the silence.",
+            r#"            .
+           / \
+          /   \
+         /_____\
+         |     |
+         | RIP |
+         |     |
+         |_____|
+"#,
+        ),
+    ];
+
+    let tick = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.subsec_nanos() as usize)
+        .unwrap_or(0);
+    let index = tick % VARIANTS.len();
+    let (line, choices, art) = VARIANTS[index];
+
+    println!("\n{art}");
+    println!("{line}\n");
+    println!("{choices}");
+
+    loop {
+        match prompt("> ")?.to_ascii_lowercase().as_str() {
+            "y" | "yes" => return Ok(true),
+            "n" | "no" | "" => return Ok(false),
+            _ => println!("Choose Y to leave, or N to stay."),
+        }
+    }
+}
 fn build_main_menu(state: &GameState) -> Vec<MenuEntry> {
     let mut menu = vec![
         MenuEntry { label: "Travel".to_string(), action: GameAction::Travel },

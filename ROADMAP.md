@@ -263,6 +263,14 @@ Completed:
 - adjusted dangerous encounters to reduce early-game damage spikes while preserving different threat durability
 - reduced repetitive travel/location presentation by keeping the recurring status display focused on actionable information
 
+## v0.12.1 Quit-screen polish
+
+Completed:
+- replaced the plain quit confirmation with a randomized atmospheric exit screen
+- added four original dark farewell variants with contextual ASCII art
+- kept quitting non-destructive: `N`, `No`, or Enter returns to the game without changing state
+- bumped the project version to 0.12.1
+
 ## Tracking rule
 
 Use this roadmap as the main progress checklist. If a feature is not helping one of the current milestone goals, it should not become a priority yet.
