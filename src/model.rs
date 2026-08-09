@@ -107,6 +107,43 @@ pub struct Corpse {
     pub scavenged: bool,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct Faction {
+    pub id: EntityId,
+    pub name: String,
+    #[serde(default)]
+    pub reputation: i32,
+    #[serde(default)]
+    pub memory: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct Npc {
+    pub id: EntityId,
+    pub name: String,
+    pub title: String,
+    pub location_id: EntityId,
+    #[serde(default)]
+    pub faction_id: Option<EntityId>,
+    #[serde(default)]
+    pub memory: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct Quest {
+    pub id: EntityId,
+    pub title: String,
+    pub description: String,
+    pub target_location_id: EntityId,
+    pub faction_id: EntityId,
+    #[serde(default)]
+    pub offered: bool,
+    #[serde(default)]
+    pub completed: bool,
+    #[serde(default)]
+    pub reward_claimed: bool,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GameState {
     pub world: World,
@@ -115,6 +152,14 @@ pub struct GameState {
     pub threat: ThreatState,
     #[serde(default)]
     pub corpses: Vec<Corpse>,
+    #[serde(default)]
+    pub factions: Vec<Faction>,
+    #[serde(default)]
+    pub npcs: Vec<Npc>,
+    #[serde(default)]
+    pub quests: Vec<Quest>,
+    #[serde(default)]
+    pub last_announced_location_id: Option<EntityId>,
 }
 
 impl World {
@@ -246,6 +291,61 @@ impl Character {
     }
 }
 
+impl Faction {
+    pub fn new(id: EntityId, name: impl Into<String>) -> Self {
+        Self {
+            id,
+            name: name.into(),
+            reputation: 0,
+            memory: Vec::new(),
+        }
+    }
+}
+
+impl Npc {
+    pub fn new(
+        id: EntityId,
+        name: impl Into<String>,
+        title: impl Into<String>,
+        location_id: EntityId,
+        faction_id: Option<EntityId>,
+    ) -> Self {
+        Self {
+            id,
+            name: name.into(),
+            title: title.into(),
+            location_id,
+            faction_id,
+            memory: Vec::new(),
+        }
+    }
+
+    pub fn display_name(&self) -> String {
+        format!("{} the {}", self.name, self.title)
+    }
+}
+
+impl Quest {
+    pub fn new(
+        id: EntityId,
+        title: impl Into<String>,
+        description: impl Into<String>,
+        target_location_id: EntityId,
+        faction_id: EntityId,
+    ) -> Self {
+        Self {
+            id,
+            title: title.into(),
+            description: description.into(),
+            target_location_id,
+            faction_id,
+            offered: false,
+            completed: false,
+            reward_claimed: false,
+        }
+    }
+}
+
 pub fn create_new_state(world_name: &str, mode: WorldMode, character_name: String, title: String) -> GameState {
     let mut world = World::new(world_name, mode);
     let character = world.spawn_character(character_name, title);
@@ -255,6 +355,10 @@ pub fn create_new_state(world_name: &str, mode: WorldMode, character_name: Strin
         character,
         threat: ThreatState::default(),
         corpses: Vec::new(),
+        factions: Vec::new(),
+        npcs: Vec::new(),
+        quests: Vec::new(),
+        last_announced_location_id: None,
     }
 }
 
@@ -269,5 +373,9 @@ pub fn create_inherited_state(state: &GameState, character_name: String, title: 
         character,
         threat: ThreatState::default(),
         corpses: state.corpses.clone(),
+        factions: state.factions.clone(),
+        npcs: state.npcs.clone(),
+        quests: state.quests.clone(),
+        last_announced_location_id: None,
     }
 }

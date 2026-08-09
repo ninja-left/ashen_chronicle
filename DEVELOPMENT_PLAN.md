@@ -149,7 +149,7 @@ The world should keep a history log of meaningful events:
 - who witnessed it
 - what changed afterward
 
-NPCs should have memory rules for short-term, long-term, and faction-level memory. Not everyone remembers everything. Only store what matters.
+NPCs should have memory rules for short-term, long-term, and faction-level memory. Not everyone remembers everything. Only store what matters. The current prototype now carries a first pass of faction reputation, NPC memory, and a simple quest consequence loop.
 
 ## 13) Corpses, items, and remnants
 

@@ -89,7 +89,7 @@ Work items:
 - NPC memory basics
 - simple quest system
 
-Status: in progress.
+Status: complete.
 
 Completed so far:
 - corpses are created when a character dies
@@ -99,6 +99,9 @@ Completed so far:
 - the player can search remains and recover items
 - history records death, looting, and aftermath events
 - danger can be cleared by defeating a threat, changing the world state
+- faction reputation is tracked and changes when the player completes the shrine quest
+- NPCs remember important events and react differently on later visits
+- the first simple quest is active and rewards the player
 
 Done when:
 - the old character leaves visible traces in the world
