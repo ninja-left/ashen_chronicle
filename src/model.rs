@@ -1,5 +1,4 @@
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
 
 pub type EntityId = u64;
 
@@ -7,6 +6,32 @@ pub type EntityId = u64;
 pub enum WorldMode {
     New,
     Inherited,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ThreatState {
+    pub active: bool,
+    pub source_location_id: Option<EntityId>,
+    pub label: String,
+    pub description: String,
+}
+
+impl ThreatState {
+    pub fn activate(
+        &mut self,
+        source_location_id: EntityId,
+        label: impl Into<String>,
+        description: impl Into<String>,
+    ) {
+        self.active = true;
+        self.source_location_id = Some(source_location_id);
+        self.label = label.into();
+        self.description = description.into();
+    }
+
+    pub fn clear(&mut self) {
+        *self = Self::default();
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -34,6 +59,8 @@ pub struct Location {
     pub name: String,
     pub description: String,
     pub region_id: EntityId,
+    #[serde(default)]
+    pub dangerous: bool,
     pub exits: Vec<EntityId>,
 }
 
@@ -69,6 +96,8 @@ pub struct Item {
 pub struct GameState {
     pub world: World,
     pub character: Character,
+    #[serde(default)]
+    pub threat: ThreatState,
 }
 
 impl World {
@@ -101,11 +130,8 @@ impl World {
         self.locations.iter().find(|location| location.id == id)
     }
 
-    pub fn location_name_map(&self) -> BTreeMap<EntityId, String> {
-        self.locations
-            .iter()
-            .map(|location| (location.id, location.name.clone()))
-            .collect()
+    pub fn location_is_dangerous(&self, id: EntityId) -> bool {
+        self.location_by_id(id).map(|location| location.dangerous).unwrap_or(false)
     }
 
     pub fn record_history(&mut self, turn: u32, text: impl Into<String>) {
@@ -142,6 +168,7 @@ impl World {
             name: "Ashen Gate".to_string(),
             description: "A cracked iron gate hanging between broken towers, staring over a dead road.".to_string(),
             region_id,
+            dangerous: false,
             exits: vec![market_id],
         };
         let market = Location {
@@ -149,6 +176,7 @@ impl World {
             name: "Hollow Market".to_string(),
             description: "Stalls without merchants, lanterns without flame, and the echo of old bargaining.".to_string(),
             region_id,
+            dangerous: false,
             exits: vec![gate_id, shrine_id],
         };
         let shrine = Location {
@@ -156,6 +184,7 @@ impl World {
             name: "Old Shrine".to_string(),
             description: "A roofless shrine with a black altar and fresh soot on the floor.".to_string(),
             region_id,
+            dangerous: true,
             exits: vec![market_id],
         };
 
@@ -194,7 +223,11 @@ pub fn create_new_state(world_name: &str, mode: WorldMode, character_name: Strin
     let mut world = World::new(world_name, mode);
     let character = world.spawn_character(character_name, title);
     world.record_history(0, format!("{} entered the world.", character.display_name()));
-    GameState { world, character }
+    GameState {
+        world,
+        character,
+        threat: ThreatState::default(),
+    }
 }
 
 pub fn create_inherited_state(mut world: World, character_name: String, title: String) -> GameState {
@@ -202,5 +235,9 @@ pub fn create_inherited_state(mut world: World, character_name: String, title: S
     let character = world.spawn_character(character_name, title);
     let turn = world.history.last().map(|entry| entry.turn).unwrap_or(0);
     world.record_history(turn, format!("{} inherited the world.", character.display_name()));
-    GameState { world, character }
+    GameState {
+        world,
+        character,
+        threat: ThreatState::default(),
+    }
 }

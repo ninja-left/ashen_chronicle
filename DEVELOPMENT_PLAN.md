@@ -212,8 +212,8 @@ The first playable milestone should allow a player to:
 - create a character
 - enter a small procedural world
 - travel between locations
-- encounter simple events
-- fight or flee
+- encounter simple events or threats
+- manage safety before meditating or saving
 - die
 - choose new world or inherited world
 - return to the death site and see leftover consequences

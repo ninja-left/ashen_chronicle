@@ -26,7 +26,7 @@ Work items:
 - text UI
 - simple turn/state loop
 
-Status: in progress.
+Status: complete.
 
 Completed so far:
 - world state model exists
@@ -34,7 +34,10 @@ Completed so far:
 - basic character creation is wired into the game loop
 - text UI menus and prompts exist
 - save/load is implemented through a versioned JSON save file
-- a simple travel/rest/journal/death loop is playable
+- a simple travel/history/death loop is playable
+- the menu now uses a single Back label in submenus instead of Cancel/Exit duplication
+- the recovery action is now meditate/relax, and it heals plus saves when the player is safe
+- a first threat state exists so meditation is blocked in dangerous places
 
 Done when:
 - a new game can start
@@ -54,6 +57,15 @@ Work items:
 - simple combat
 - death handling
 - new world or inherited world choice
+
+Status: in progress.
+
+Completed so far:
+- the player can move through a generated world
+- the player can die
+- the death screen offers world reset or world inheritance
+- safe meditation and saving are now tied to world danger
+- a basic threat interaction exists
 
 Done when:
 - the player can move through a generated world

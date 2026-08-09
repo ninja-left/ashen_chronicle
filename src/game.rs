@@ -3,6 +3,22 @@ use crate::persistence::{load_game, save_game};
 use crate::ui::{choose_from_list, pause, prompt};
 use std::path::PathBuf;
 
+#[derive(Clone, Copy)]
+enum GameAction {
+    Travel,
+    FaceThreat,
+    Meditate,
+    Inventory,
+    Journal,
+    TestDeath,
+    Quit,
+}
+
+struct MenuEntry {
+    label: String,
+    action: GameAction,
+}
+
 pub fn run() -> std::io::Result<()> {
     let save_path = PathBuf::from("ashen_chronicle_save.json");
     let mut state = start_or_load(&save_path)?;
@@ -10,7 +26,7 @@ pub fn run() -> std::io::Result<()> {
 }
 
 fn start_or_load(save_path: &PathBuf) -> std::io::Result<GameState> {
-    println!("The Ashen Chronicle v0.2.0");
+    println!("The Ashen Chronicle v0.3.0");
     println!("--------------------------------");
     if save_path.exists() {
         let choice = prompt("Load existing save? [y/N] ")?;
@@ -55,32 +71,67 @@ fn main_loop(state: &mut GameState, save_path: &PathBuf) -> std::io::Result<()> 
         }
 
         render_state(state);
-        let options = vec![
-            "Travel".to_string(),
-            "Rest".to_string(),
-            "View inventory".to_string(),
-            "Write journal note".to_string(),
-            "Test the death flow".to_string(),
-            "Save game".to_string(),
-            "Quit".to_string(),
-        ];
-        match choose_from_list("Choose an action", &options)? {
-            Some(0) => travel(state)?,
-            Some(1) => rest(state),
-            Some(2) => show_inventory(state),
-            Some(3) => write_note(state)?,
-            Some(4) => force_death(state),
-            Some(5) => save_now(state, save_path)?,
-            Some(6) | None => {
-                let answer = prompt("Quit without saving? [y/N] ")?;
-                if answer.eq_ignore_ascii_case("y") {
-                    break;
+        let menu = build_main_menu(state);
+        let labels: Vec<String> = menu.iter().map(|entry| entry.label.clone()).collect();
+        if let Some(choice) = choose_from_list("Choose an action", &labels, None)? {
+            match menu[choice].action {
+                GameAction::Travel => travel(state)?,
+                GameAction::FaceThreat => face_threat(state),
+                GameAction::Meditate => meditate_and_save(state, save_path)?,
+                GameAction::Inventory => show_inventory(state),
+                GameAction::Journal => write_note(state)?,
+                GameAction::TestDeath => force_death(state),
+                GameAction::Quit => {
+                    let answer = prompt("Quit without saving? [y/N] ")?;
+                    if answer.eq_ignore_ascii_case("y") {
+                        break;
+                    }
                 }
             }
-            _ => {}
         }
     }
     Ok(())
+}
+
+fn build_main_menu(state: &GameState) -> Vec<MenuEntry> {
+    let mut menu = vec![
+        MenuEntry {
+            label: "Travel".to_string(),
+            action: GameAction::Travel,
+        },
+        MenuEntry {
+            label: "Meditate / relax".to_string(),
+            action: GameAction::Meditate,
+        },
+        MenuEntry {
+            label: "View inventory".to_string(),
+            action: GameAction::Inventory,
+        },
+        MenuEntry {
+            label: "Write journal note".to_string(),
+            action: GameAction::Journal,
+        },
+        MenuEntry {
+            label: "Test the death flow".to_string(),
+            action: GameAction::TestDeath,
+        },
+        MenuEntry {
+            label: "Quit".to_string(),
+            action: GameAction::Quit,
+        },
+    ];
+
+    if state.threat.active {
+        menu.insert(
+            1,
+            MenuEntry {
+                label: "Face threat".to_string(),
+                action: GameAction::FaceThreat,
+            },
+        );
+    }
+
+    menu
 }
 
 fn render_state(state: &GameState) {
@@ -92,15 +143,25 @@ fn render_state(state: &GameState) {
     println!("Character: {}", character.display_name());
     println!("HP: {}/{}", character.hp, character.max_hp);
     if let Some(location) = location {
-        let region_name = world.region_by_id(location.region_id).map(|region| region.name.as_str()).unwrap_or("Unknown region");
+        let region_name = world
+            .region_by_id(location.region_id)
+            .map(|region| region.name.as_str())
+            .unwrap_or("Unknown region");
         println!("Location: {} ({})", location.name, region_name);
         println!("{}", location.description);
+        if location.dangerous {
+            println!("Danger: this place is unsafe.");
+        }
         let exits: Vec<String> = location
             .exits
             .iter()
             .filter_map(|id| world.location_by_id(*id).map(|loc| loc.name.clone()))
             .collect();
         println!("Exits: {}", exits.join(", "));
+    }
+    if state.threat.active {
+        println!("Threat: {}", state.threat.label);
+        println!("{}", state.threat.description);
     }
     println!("History entries: {}", world.history.len());
 }
@@ -126,27 +187,75 @@ fn travel(state: &mut GameState) -> std::io::Result<()> {
         return Ok(());
     }
 
-    if let Some(choice) = choose_from_list("Travel where?", &options)? {
+    if let Some(choice) = choose_from_list("Travel where?", &options, Some("Back"))? {
         if let Some(target_id) = current_location.exits.get(choice).copied() {
             state.character.location_id = target_id;
             state.character.turn += 1;
-            let location_name = state
-                .world
-                .location_by_id(target_id)
+            state.threat.clear();
+            let location = state.world.location_by_id(target_id).cloned();
+            let location_name = location
+                .as_ref()
                 .map(|loc| loc.name.clone())
                 .unwrap_or_else(|| "Unknown".to_string());
-            state.world.record_history(state.character.turn, format!("{} traveled to {}.", state.character.display_name(), location_name));
+            let character_name = state.character.display_name();
+            state
+                .world
+                .record_history(state.character.turn, format!("{} traveled to {}.", character_name, location_name));
             println!("You travel to {}.", location_name);
+
+            if let Some(location) = location {
+                if location.dangerous {
+                    state.threat.activate(
+                        location.id,
+                        format!("{} stirs", location.name),
+                        "The air is tense. Something here is still awake.".to_string(),
+                    );
+                    println!("This place is dangerous.");
+                }
+            }
         }
     }
     Ok(())
 }
 
-fn rest(state: &mut GameState) {
+fn meditate_and_save(state: &mut GameState, save_path: &PathBuf) -> std::io::Result<()> {
+    let location_is_dangerous = state.world.location_is_dangerous(state.character.location_id);
+    if state.threat.active || location_is_dangerous {
+        println!("Not safe enough to meditate here.");
+        pause();
+        return Ok(());
+    }
+
     state.character.turn += 1;
     state.character.hp = (state.character.hp + 3).min(state.character.max_hp);
-    state.world.record_history(state.character.turn, format!("{} rested and recovered.", state.character.display_name()));
-    println!("You rest. HP is now {}/{}.", state.character.hp, state.character.max_hp);
+    let character_name = state.character.display_name();
+    state
+        .world
+        .record_history(state.character.turn, format!("{} meditated and recovered.", character_name));
+    save_game(save_path, state)?;
+    println!("You settle your breathing, recover to {}/{}, and save the game.", state.character.hp, state.character.max_hp);
+    Ok(())
+}
+
+fn face_threat(state: &mut GameState) {
+    if !state.threat.active {
+        println!("There is no active threat to face.");
+        pause();
+        return;
+    }
+
+    state.character.turn += 1;
+    let character_name = state.character.display_name();
+    let location_name = state
+        .world
+        .location_by_id(state.character.location_id)
+        .map(|location| location.name.clone())
+        .unwrap_or_else(|| "an unknown place".to_string());
+    state
+        .world
+        .record_history(state.character.turn, format!("{} faced a threat at {}.", character_name, location_name));
+    state.threat.clear();
+    println!("You face the threat and force it back.");
 }
 
 fn show_inventory(state: &GameState) {
@@ -166,7 +275,9 @@ fn write_note(state: &mut GameState) -> std::io::Result<()> {
     if !note.is_empty() {
         state.character.notes.push(note.clone());
         state.character.turn += 1;
-        state.world.record_history(state.character.turn, format!("{} noted: {}", state.character.display_name(), note));
+        state
+            .world
+            .record_history(state.character.turn, format!("{} noted: {}", state.character.display_name(), note));
     }
     Ok(())
 }
@@ -180,14 +291,10 @@ fn force_death(state: &mut GameState) {
         .location_by_id(state.character.location_id)
         .map(|location| location.name.clone())
         .unwrap_or_else(|| "an unknown place".to_string());
-    state.world.record_history(state.character.turn, format!("{} died at {}.", state.character.display_name(), location_name));
+    state
+        .world
+        .record_history(state.character.turn, format!("{} died at {}.", state.character.display_name(), location_name));
     println!("The character falls.");
-}
-
-fn save_now(state: &GameState, save_path: &PathBuf) -> std::io::Result<()> {
-    save_game(save_path, state)?;
-    println!("Saved to {}", save_path.display());
-    Ok(())
 }
 
 fn death_screen(state: &mut GameState, save_path: &PathBuf) -> std::io::Result<bool> {
@@ -197,7 +304,7 @@ fn death_screen(state: &mut GameState, save_path: &PathBuf) -> std::io::Result<b
         "Inherit this world with a new character".to_string(),
         "Save and quit".to_string(),
     ];
-    match choose_from_list("Death screen", &options)? {
+    match choose_from_list("Death screen", &options, None)? {
         Some(0) => {
             *state = create_from_prompts(WorldMode::New)?;
             Ok(true)
@@ -206,8 +313,9 @@ fn death_screen(state: &mut GameState, save_path: &PathBuf) -> std::io::Result<b
             *state = create_inherited_from_world(state)?;
             Ok(true)
         }
-        Some(2) | None => {
-            save_now(state, save_path)?;
+        Some(2) => {
+            save_game(save_path, state)?;
+            println!("Saved to {}", save_path.display());
             Ok(false)
         }
         _ => Ok(false),

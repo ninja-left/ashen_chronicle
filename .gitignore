@@ -1,0 +1,43 @@
+# Rust build output
+target/
+**/target/
+
+# Rust backup files
+**/*.rs.bk
+
+# Editor settings
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS junk
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Logs
+*.log
+
+# Local game data
+ashen_chronicle_save.json
+save/
+saves/
+*.sav
+*.save
+
+# Temporary files
+tmp/
+temp/
+
+# Archive outputs
+*.tar
+*.tar.xz
+*.zip
+*.gz
+
+# Personal
+*.todo
+njl_*
+
