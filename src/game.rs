@@ -1,7 +1,7 @@
 use crate::content::{load_campaign_content, CampaignContent};
 use crate::model::{
     create_inherited_state, create_new_state, Corpse, EntityId, Faction, GameState, Item, Npc,
-    Quest, WorldMode,
+    Condition, Quest, WorldMode,
 };
 use crate::persistence::{load_game, save_game};
 use crate::ui::{choose_from_list, narrate, pause, prompt};
@@ -12,7 +12,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 #[derive(Clone, Copy)]
 enum GameAction {
     Travel,
-    ConfrontThreat,
+    InvestigateThreat,
     SearchRemains,
     Talk,
     Meditate,
@@ -21,6 +21,7 @@ enum GameAction {
     Journal,
     TestDeath,
     Quit,
+    CharacterSheet,
 }
 
 struct MenuEntry {
@@ -43,7 +44,7 @@ pub fn run() -> std::io::Result<()> {
 }
 
 fn start_or_load(save_path: &PathBuf) -> std::io::Result<GameState> {
-    println!("The Ashen Chronicle v0.13.0");
+    println!("The Ashen Chronicle v0.14.0");
     println!("--------------------------------");
     if save_path.exists() {
         let choice = prompt("Load existing save? [y/N] ")?;
@@ -322,13 +323,14 @@ fn main_loop(state: &mut GameState, save_path: &PathBuf) -> std::io::Result<()> 
         if let Some(choice) = choose_from_list("Choose an action", &labels, None)? {
             match menu[choice].action {
                 GameAction::Travel => travel(state)?,
-                GameAction::ConfrontThreat => confront_threat(state)?,
+                GameAction::InvestigateThreat => investigate_threat(state)?,
                 GameAction::SearchRemains => search_remains(state)?,
                 GameAction::Talk => talk(state)?,
                 GameAction::Meditate => meditate_and_save(state, save_path)?,
                 GameAction::QuestLog => review_quests(state),
                 GameAction::Inventory => show_inventory(state),
                 GameAction::Journal => write_note(state)?,
+                GameAction::CharacterSheet => character_sheet(state),
                 GameAction::TestDeath => force_death(state),
                 GameAction::Quit => {
                     if quit_screen()? {
@@ -425,12 +427,13 @@ fn build_main_menu(state: &GameState) -> Vec<MenuEntry> {
         MenuEntry { label: "Quest log".to_string(), action: GameAction::QuestLog },
         MenuEntry { label: "View inventory".to_string(), action: GameAction::Inventory },
         MenuEntry { label: "Write journal note".to_string(), action: GameAction::Journal },
+        MenuEntry { label: "Character sheet".to_string(), action: GameAction::CharacterSheet },
         MenuEntry { label: "Test the death flow".to_string(), action: GameAction::TestDeath },
         MenuEntry { label: "Quit".to_string(), action: GameAction::Quit },
     ];
 
     if state.threat.active {
-        menu.insert(1, MenuEntry { label: "Face threat".to_string(), action: GameAction::ConfrontThreat });
+        menu.insert(1, MenuEntry { label: "Investigate".to_string(), action: GameAction::InvestigateThreat });
     }
 
     if has_unscavenged_remains_at_location(state) {
@@ -456,6 +459,11 @@ fn render_state(state: &GameState) {
     println!("\n=== {} ===", world.name);
     println!("Character: {}", character.display_name());
     println!("HP: {}/{}", character.hp, character.max_hp);
+    println!("Time: {}", time_display(world.time_points, world.day));
+    if !character.conditions.is_empty() {
+        let conditions: Vec<String> = character.conditions.iter().map(|c| format!("{} ({})", c.name, c.remaining)).collect();
+        println!("Condition: {}", conditions.join(", "));
+    }
     if let Some(location) = location {
         println!("Location: {}", location.name);
         println!("{}", location.description);
@@ -560,6 +568,11 @@ fn talk(state: &mut GameState) -> std::io::Result<()> {
 fn talk_to_npc(state: &mut GameState, npc_id: EntityId) -> std::io::Result<()> {
     let Some(npc_index) = npc_index_by_id(state, npc_id) else { return Ok(()); };
     let npc_name = state.npcs[npc_index].display_name();
+    if !npc_is_available_now(state.world.time_points) {
+        println!("{} is not available at {}. The hour is too late.", npc_name, time_display(state.world.time_points, state.world.day));
+        pause();
+        return Ok(());
+    }
     if let Some(memory) = state.npcs[npc_index].memory.last() {
         println!("{} remembers: {}", npc_name, memory);
     }
@@ -575,16 +588,19 @@ fn talk_to_npc(state: &mut GameState, npc_id: EntityId) -> std::io::Result<()> {
         .map(|(index, _)| index)
         .collect();
 
-    if quest_indices.is_empty() {
+    let mut options = vec![
+        "Ask if they need help".to_string(),
+        "Tell them it's done".to_string(),
+    ];
+    let can_probe_memory = state.character.effective_insight() >= 2 && !state.npcs[npc_index].memory.is_empty();
+    if can_probe_memory {
+        options.push("Ask what they remember".to_string());
+    }
+    if quest_indices.is_empty() && !can_probe_memory {
         println!("{} has little to say.", npc_name);
         pause();
         return Ok(());
     }
-
-    let options = vec![
-        "Ask if they need help".to_string(),
-        "Tell them it's done".to_string(),
-    ];
     if let Some(choice) = choose_from_list(&format!("Talk to {}", npc_name), &options, Some("Back"))? {
         match choice {
             0 => {
@@ -657,9 +673,16 @@ fn talk_to_npc(state: &mut GameState, npc_id: EntityId) -> std::io::Result<()> {
                 }
                 pause();
             }
+            2 if can_probe_memory => {
+                if let Some(memory) = state.npcs[npc_index].memory.last() {
+                    println!("{} searches your face, then recalls: {}", npc_name, memory);
+                }
+                pause();
+            }
             _ => {}
         }
     }
+    advance_time(state, 1);
     Ok(())
 }
 
@@ -712,6 +735,7 @@ fn complete_quest(state: &mut GameState, quest_index: usize) -> bool {
 Quest complete: {}", title);
     println!("  Quest item consumed: {}", required_item_name);
     println!("  Reward: {}", reward.name);
+    gain_experience(state, 25);
     println!("  Reputation: +5 for completing the deed, +5 while carrying the reward");
     true
 }
@@ -773,6 +797,86 @@ fn corpse_label(corpse: &Corpse) -> String {
     }
 }
 
+
+fn time_display(points: u32, day: u32) -> String {
+    const PORTIONS: [&str; 12] = ["Deep Night", "Before Dawn", "Dawn", "Morning", "Late Morning", "High Sun", "Afternoon", "Late Afternoon", "Dusk", "Evening", "Night", "Midnight"];
+    const TRACK: [&str; 7] = ["E", ".", ".", ".", ".", ".", "W"];
+    let slot = (points % 12) as usize;
+    let (label, icon) = match slot {
+        2..=8 => (PORTIONS[slot], "(O)"),
+        _ => (PORTIONS[slot], "(C)"),
+    };
+    let position = ((slot * 6 + 5) / 11).min(6);
+    let mut track = TRACK.map(str::to_string);
+    track[position] = icon.to_string();
+    format!("Day {} - {}  {}  {}  (O)=sun (C)=moon", day, label, track.join("---"), if slot < 9 { "Daylight" } else { "Night" })
+}
+
+fn advance_time(state: &mut GameState, amount: u32) {
+    let total = state.world.time_points + amount;
+    state.world.day += total / 12;
+    state.world.time_points = total % 12;
+    for condition in &mut state.character.conditions {
+        condition.remaining = condition.remaining.saturating_sub(amount);
+    }
+    state.character.conditions.retain(|condition| condition.remaining > 0);
+    if amount > 0 && state.character.hp <= state.character.max_hp / 3 && state.character.alive {
+        add_or_refresh_condition(&mut state.character.conditions, Condition::new("Wounded", 3, -1));
+    }
+}
+
+fn add_or_refresh_condition(conditions: &mut Vec<Condition>, condition: Condition) {
+    if let Some(existing) = conditions.iter_mut().find(|current| current.name == condition.name) {
+        existing.remaining = existing.remaining.max(condition.remaining);
+        existing.penalty = condition.penalty;
+        existing.bonus = condition.bonus;
+    } else {
+        conditions.push(condition);
+    }
+}
+
+fn remove_condition(conditions: &mut Vec<Condition>, name: &str) {
+    conditions.retain(|condition| condition.name != name);
+}
+
+fn is_night(points: u32) -> bool {
+    matches!(points % 12, 0 | 1 | 10 | 11)
+}
+
+fn npc_is_available_now(points: u32) -> bool {
+    matches!(points % 12, 2..=9)
+}
+
+fn gain_experience(state: &mut GameState, amount: u32) {
+    state.character.experience += amount;
+    loop {
+        let threshold = state.character.level * 50;
+        if state.character.experience < threshold { break; }
+        state.character.experience -= threshold;
+        state.character.level += 1;
+        println!("\nYou have grown stronger. You reached level {}.", state.character.level);
+        let options = vec!["Might (+1 attack)".to_string(), "Insight (+1 search/recovery)".to_string(), "Endurance (+1 meditation healing)".to_string()];
+        if let Ok(Some(choice)) = choose_from_list("Choose a new strength", &options, None) {
+            match choice {
+                0 => state.character.attributes.might += 1,
+                1 => state.character.attributes.insight += 1,
+                _ => state.character.attributes.endurance += 1,
+            }
+        }
+    }
+}
+
+fn character_sheet(state: &GameState) {
+    println!("\n=== Character ===");
+    println!("{}", state.character.display_name());
+    println!("Level {}  XP {}/{}", state.character.level, state.character.experience, state.character.level * 50);
+    println!("Might: {}  Insight: {}  Endurance: {}", state.character.attributes.might, state.character.attributes.insight, state.character.attributes.endurance);
+    println!("Effective might: {}  Effective insight: {}", state.character.effective_might(), state.character.effective_insight());
+    if state.character.conditions.is_empty() { println!("Conditions: none"); }
+    else { println!("Conditions: {}", state.character.conditions.iter().map(|c| format!("{} ({} portions)", c.name, c.remaining)).collect::<Vec<_>>().join(", ")); }
+    pause();
+}
+
 fn travel(state: &mut GameState) -> std::io::Result<()> {
     let current_location = match state.world.location_by_id(state.character.location_id) {
         Some(location) => location.clone(),
@@ -796,6 +900,10 @@ fn travel(state: &mut GameState) -> std::io::Result<()> {
 
     if let Some(choice) = choose_from_list("Travel where?", &options, Some("Back"))? {
         if let Some(target_id) = current_location.exits.get(choice).copied() {
+            advance_time(state, 2);
+            if is_night(state.world.time_points) {
+                add_or_refresh_condition(&mut state.character.conditions, Condition::new("Exhausted", 2, -1));
+            }
             state.character.turn += 1;
             state.character.location_id = target_id;
             state.threat.clear();
@@ -831,7 +939,7 @@ fn random_travel_event(state: &mut GameState, location_name: &str) {
         return;
     }
 
-    match (tick / 4) % 3 {
+    match ((tick / 4) + state.world.time_points as usize) % 3 {
         0 => {
             println!("A black feather skitters across the road and catches on your boot.");
             state.world.record_history(
@@ -845,6 +953,14 @@ fn random_travel_event(state: &mut GameState, location_name: &str) {
             state.world.record_history(
                 state.character.turn,
                 format!("{} found an old trail marker while traveling to {}.", state.character.display_name(), location_name),
+            );
+            pause();
+        }
+        _ if is_night(state.world.time_points) => {
+            println!("A lantern appears far down the road, then vanishes before you can follow it.");
+            state.world.record_history(
+                state.character.turn,
+                format!("{} saw a vanishing lantern while traveling to {} at night.", state.character.display_name(), location_name),
             );
             pause();
         }
@@ -867,20 +983,27 @@ fn meditate_and_save(state: &mut GameState, save_path: &PathBuf) -> std::io::Res
         return Ok(());
     }
 
+    let input = prompt("How long will you meditate? [1-4 time portions] ")?;
+    let portions = input.parse::<u32>().ok().filter(|value| (1..=4).contains(value)).unwrap_or(1);
+    let healing = portions as i32 + state.character.effective_endurance();
+    advance_time(state, portions);
     state.character.turn += 1;
-    state.character.heal(3);
+    state.character.heal(healing);
+    remove_condition(&mut state.character.conditions, "Exhausted");
+    let mut rested = Condition::new("Well-rested", 3, 0);
+    rested.bonus = 1;
+    add_or_refresh_condition(&mut state.character.conditions, rested);
     let character_name = state.character.display_name();
-    state.world.record_history(state.character.turn, format!("{} meditated and recovered.", character_name));
+    state.world.record_history(state.character.turn, format!("{} meditated for {} time portions and recovered.", character_name, portions));
     save_game(save_path, state)?;
     narrate(&format!(
-        "You settle your breathing, recover to {}/{}, and save the game.",
-        state.character.hp,
-        state.character.max_hp
+        "You meditate until your breathing steadies. Time passes: {}. You recover {} HP and save the game.",
+        time_display(state.world.time_points, state.world.day), healing
     ));
     Ok(())
 }
 
-fn confront_threat(state: &mut GameState) -> std::io::Result<()> {
+fn investigate_threat(state: &mut GameState) -> std::io::Result<()> {
     if !state.threat.active {
         println!("There is no active threat to face.");
         pause();
@@ -923,6 +1046,7 @@ fn confront_threat(state: &mut GameState) -> std::io::Result<()> {
             state.character.inventory.push(trophy.clone());
             notify_item_gain(&trophy);
             update_faction_memory_for_location(state, location.id, format!("{} was cleared of danger.", location.name));
+            gain_experience(state, 15);
             println!("\nCombat result: victory");
             println!("  Defeated: {}", enemy_name);
             println!("  Loot: {}", trophy.name);
@@ -936,8 +1060,9 @@ fn confront_threat(state: &mut GameState) -> std::io::Result<()> {
         let choices = vec!["Attack".to_string(), "Guard".to_string(), "Flee".to_string()];
         match choose_from_list("Combat action", &choices, None)? {
             Some(0) => {
+                advance_time(state, 1);
                 state.character.turn += 1;
-                let damage = 3;
+                let damage = (3 + state.character.effective_might()).max(1);
                 encounter.enemy_hp -= damage;
                 println!("You strike {} for {} damage.", encounter.enemy_name, damage);
                 let character_name = state.character.display_name();
@@ -951,8 +1076,9 @@ fn confront_threat(state: &mut GameState) -> std::io::Result<()> {
                 }
             }
             Some(1) => {
+                advance_time(state, 1);
                 state.character.turn += 1;
-                let retaliation = (encounter.enemy_power - 1).max(0);
+                let retaliation = (encounter.enemy_power - 1 - state.character.attributes.endurance / 2).max(0);
                 let character_name = state.character.display_name();
                 state.world.record_history(
                     state.character.turn,
@@ -964,6 +1090,7 @@ fn confront_threat(state: &mut GameState) -> std::io::Result<()> {
                 }
             }
             Some(2) => {
+                advance_time(state, 1);
                 state.character.turn += 1;
                 let character_name = state.character.display_name();
                 state.world.record_history(
@@ -1018,7 +1145,7 @@ fn take_combat_damage(state: &mut GameState, damage: i32, enemy_name: &str, loca
 }
 
 fn notify_item_gain(item: &Item) {
-    println!("You gain {}", item.name);
+    println!("You gain: {}", item.name);
     println!("{}", item.description);
     print_item_visual(&item.name);
 }
@@ -1086,6 +1213,7 @@ fn search_remains(state: &mut GameState) -> std::io::Result<()> {
             )
         };
 
+        advance_time(state, 1);
         println!("You search the remains at {}.", location_name);
         if items.is_empty() {
             println!("Nothing useful remains.");
@@ -1103,9 +1231,23 @@ fn search_remains(state: &mut GameState) -> std::io::Result<()> {
             grant_reward_reputation(state, &item);
             state.character.inventory.push(item);
         }
-        println!("You feel a deja-vu looking at these items.");
-        println!("Found {}", item_names.join(", "));
-        println!("You feel as if they were once yours. Though, these items can be inherited, Their memories cannot.");
+        if state.character.effective_insight() >= 2 && item_names.len() < 3 {
+            let tick = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.subsec_nanos()).unwrap_or(0);
+            if tick % 2 == 0 {
+                let hidden = Item {
+                    id: state.world.allocate_id(),
+                    name: "Ashen Note".to_string(),
+                    description: "A scrap of writing that might reveal something about the life that ended here.".to_string(),
+                };
+                notify_item_gain(&hidden);
+                state.character.inventory.push(hidden);
+                println!("Your insight uncovers something the hurried would have missed.");
+            }
+        }
+        gain_experience(state, (5 + state.character.effective_insight()).try_into().unwrap());
+        println!("Feel like a deja-vu.");
+        println!("You feel as if they were once yours. Though, These items can be inherited, Their memories cannot.");
+        println!("Recovered {}", item_names.join(", "));
 
         state.character.turn += 1;
         state.world.record_history(
@@ -1161,6 +1303,7 @@ fn write_note(state: &mut GameState) -> std::io::Result<()> {
     let note = prompt("Write a journal note: ")?;
     if !note.is_empty() {
         state.character.notes.push(note.clone());
+        advance_time(state, 1);
         state.character.turn += 1;
         let character_name = state.character.display_name();
         state.world.record_history(state.character.turn, format!("{} noted: {}", character_name, note));

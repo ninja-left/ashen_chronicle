@@ -45,6 +45,10 @@ pub struct World {
     pub regions: Vec<Region>,
     pub locations: Vec<Location>,
     pub history: Vec<HistoryEntry>,
+    #[serde(default)]
+    pub time_points: u32,
+    #[serde(default)]
+    pub day: u32,
     #[serde(default, alias = "completed_quest_titles")]
     pub completed_quest_ids: Vec<String>,
 }
@@ -88,8 +92,45 @@ pub struct Character {
     pub inventory: Vec<Item>,
     pub alive: bool,
     pub turn: u32,
+    #[serde(default)]
+    pub experience: u32,
+    #[serde(default = "default_character_level")]
+    pub level: u32,
+    #[serde(default)]
+    pub attributes: Attributes,
+    #[serde(default)]
+    pub conditions: Vec<Condition>,
     pub notes: Vec<String>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct Attributes {
+    #[serde(default)]
+    pub might: i32,
+    #[serde(default)]
+    pub insight: i32,
+    #[serde(default)]
+    pub endurance: i32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Condition {
+    pub name: String,
+    #[serde(default)]
+    pub remaining: u32,
+    #[serde(default)]
+    pub penalty: i32,
+    #[serde(default)]
+    pub bonus: i32,
+}
+
+impl Condition {
+    pub fn new(name: impl Into<String>, remaining: u32, penalty: i32) -> Self {
+        Self { name: name.into(), remaining, penalty, bonus: 0 }
+    }
+}
+
+fn default_character_level() -> u32 { 1 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Item {
@@ -186,6 +227,8 @@ impl World {
             regions: Vec::new(),
             locations: Vec::new(),
             history: Vec::new(),
+            time_points: 3,
+            day: 1,
             completed_quest_ids: Vec::new(),
         }
     }
@@ -248,12 +291,28 @@ impl Character {
             inventory: Vec::new(),
             alive: true,
             turn: 0,
+            experience: 0,
+            level: 1,
+            attributes: Attributes { might: 1, insight: 1, endurance: 1 },
+            conditions: Vec::new(),
             notes: vec!["Born into ash, with no past worth keeping.".to_string()],
         }
     }
 
     pub fn display_name(&self) -> String {
         format!("{} the {}", self.name, self.title)
+    }
+
+    pub fn effective_might(&self) -> i32 {
+        self.attributes.might + condition_penalty(&self.conditions, "Wounded")
+    }
+
+    pub fn effective_insight(&self) -> i32 {
+        self.attributes.insight + condition_penalty(&self.conditions, "Exhausted")
+    }
+
+    pub fn effective_endurance(&self) -> i32 {
+        self.attributes.endurance + self.conditions.iter().map(|condition| condition.bonus).sum::<i32>()
     }
 
     pub fn heal(&mut self, amount: i32) {
@@ -323,6 +382,10 @@ impl Quest {
             reward_claimed: false,
         }
     }
+}
+
+fn condition_penalty(conditions: &[Condition], name: &str) -> i32 {
+    conditions.iter().filter(|condition| condition.name == name).map(|condition| condition.penalty).sum()
 }
 
 pub fn create_new_state(world_name: &str, mode: WorldMode, character_name: String, title: String) -> GameState {

@@ -283,3 +283,25 @@ Completed:
 ## Tracking rule
 
 Use this roadmap as the main progress checklist. If a feature is not helping one of the current milestone goals, it should not become a priority yet.
+
+
+## Phase 9: Character progression and living time
+
+Goal: make each life develop over time while the world continues to age between lives.
+
+Status: in progress.
+
+## v0.14.0 Character progression, conditions, and time foundation
+
+Completed:
+- added Might, Insight, and Endurance attributes with level-based progression
+- added experience gains from combat, quests, and discovery, with player-chosen level improvements
+- added a character sheet for progression and condition visibility
+- added Wounded, Exhausted, and Well-rested conditions with gameplay effects
+- added a persistent world time cycle with named day/night portions, day count, and an east-to-west ASCII sun/moon track
+- made travel, combat, searching, journaling, talking, and meditation advance hidden time portions
+- made meditation duration player-selected and tied healing directly to time spent
+- added time-sensitive NPC availability and travel atmosphere changes
+- kept progression and conditions character-specific while world time persists through inheritance
+- added v1 save migration for the new progression/time fields
+- added small time-sensitive travel variation to exercise the new systems
