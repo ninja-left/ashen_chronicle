@@ -1,4 +1,4 @@
-use crate::model::{create_inherited_state, create_new_state, GameState, WorldMode};
+use crate::model::{create_inherited_state, create_new_state, EntityId, GameState, Item, WorldMode};
 use crate::persistence::{load_game, save_game};
 use crate::ui::{choose_from_list, pause, prompt};
 use std::path::PathBuf;
@@ -6,7 +6,7 @@ use std::path::PathBuf;
 #[derive(Clone, Copy)]
 enum GameAction {
     Travel,
-    FaceThreat,
+    ConfrontThreat,
     Meditate,
     Inventory,
     Journal,
@@ -14,9 +14,23 @@ enum GameAction {
     Quit,
 }
 
+#[derive(Clone, Copy)]
+enum CombatAction {
+    Attack,
+    Guard,
+    Flee,
+}
+
 struct MenuEntry {
     label: String,
     action: GameAction,
+}
+
+struct CombatEncounter {
+    enemy_name: String,
+    enemy_hp: i32,
+    enemy_power: i32,
+    enemy_id: EntityId,
 }
 
 pub fn run() -> std::io::Result<()> {
@@ -26,7 +40,7 @@ pub fn run() -> std::io::Result<()> {
 }
 
 fn start_or_load(save_path: &PathBuf) -> std::io::Result<GameState> {
-    println!("The Ashen Chronicle v0.3.0");
+    println!("The Ashen Chronicle v0.4.0");
     println!("--------------------------------");
     if save_path.exists() {
         let choice = prompt("Load existing save? [y/N] ")?;
@@ -76,7 +90,7 @@ fn main_loop(state: &mut GameState, save_path: &PathBuf) -> std::io::Result<()> 
         if let Some(choice) = choose_from_list("Choose an action", &labels, None)? {
             match menu[choice].action {
                 GameAction::Travel => travel(state)?,
-                GameAction::FaceThreat => face_threat(state),
+                GameAction::ConfrontThreat => confront_threat(state)?,
                 GameAction::Meditate => meditate_and_save(state, save_path)?,
                 GameAction::Inventory => show_inventory(state),
                 GameAction::Journal => write_note(state)?,
@@ -95,40 +109,16 @@ fn main_loop(state: &mut GameState, save_path: &PathBuf) -> std::io::Result<()> 
 
 fn build_main_menu(state: &GameState) -> Vec<MenuEntry> {
     let mut menu = vec![
-        MenuEntry {
-            label: "Travel".to_string(),
-            action: GameAction::Travel,
-        },
-        MenuEntry {
-            label: "Meditate / relax".to_string(),
-            action: GameAction::Meditate,
-        },
-        MenuEntry {
-            label: "View inventory".to_string(),
-            action: GameAction::Inventory,
-        },
-        MenuEntry {
-            label: "Write journal note".to_string(),
-            action: GameAction::Journal,
-        },
-        MenuEntry {
-            label: "Test the death flow".to_string(),
-            action: GameAction::TestDeath,
-        },
-        MenuEntry {
-            label: "Quit".to_string(),
-            action: GameAction::Quit,
-        },
+        MenuEntry { label: "Travel".to_string(), action: GameAction::Travel },
+        MenuEntry { label: "Meditate".to_string(), action: GameAction::Meditate },
+        MenuEntry { label: "View inventory".to_string(), action: GameAction::Inventory },
+        MenuEntry { label: "Write journal note".to_string(), action: GameAction::Journal },
+        MenuEntry { label: "Test the death flow".to_string(), action: GameAction::TestDeath },
+        MenuEntry { label: "Quit".to_string(), action: GameAction::Quit },
     ];
 
     if state.threat.active {
-        menu.insert(
-            1,
-            MenuEntry {
-                label: "Face threat".to_string(),
-                action: GameAction::FaceThreat,
-            },
-        );
+        menu.insert(1, MenuEntry { label: "Face threat".to_string(), action: GameAction::ConfrontThreat });
     }
 
     menu
@@ -143,20 +133,13 @@ fn render_state(state: &GameState) {
     println!("Character: {}", character.display_name());
     println!("HP: {}/{}", character.hp, character.max_hp);
     if let Some(location) = location {
-        let region_name = world
-            .region_by_id(location.region_id)
-            .map(|region| region.name.as_str())
-            .unwrap_or("Unknown region");
+        let region_name = world.region_by_id(location.region_id).map(|region| region.name.as_str()).unwrap_or("Unknown region");
         println!("Location: {} ({})", location.name, region_name);
         println!("{}", location.description);
         if location.dangerous {
             println!("Danger: this place is unsafe.");
         }
-        let exits: Vec<String> = location
-            .exits
-            .iter()
-            .filter_map(|id| world.location_by_id(*id).map(|loc| loc.name.clone()))
-            .collect();
+        let exits: Vec<String> = location.exits.iter().filter_map(|id| world.location_by_id(*id).map(|loc| loc.name.clone())).collect();
         println!("Exits: {}", exits.join(", "));
     }
     if state.threat.active {
@@ -189,18 +172,13 @@ fn travel(state: &mut GameState) -> std::io::Result<()> {
 
     if let Some(choice) = choose_from_list("Travel where?", &options, Some("Back"))? {
         if let Some(target_id) = current_location.exits.get(choice).copied() {
-            state.character.location_id = target_id;
             state.character.turn += 1;
+            state.character.location_id = target_id;
             state.threat.clear();
             let location = state.world.location_by_id(target_id).cloned();
-            let location_name = location
-                .as_ref()
-                .map(|loc| loc.name.clone())
-                .unwrap_or_else(|| "Unknown".to_string());
+            let location_name = location.as_ref().map(|loc| loc.name.clone()).unwrap_or_else(|| "Unknown".to_string());
             let character_name = state.character.display_name();
-            state
-                .world
-                .record_history(state.character.turn, format!("{} traveled to {}.", character_name, location_name));
+            state.world.record_history(state.character.turn, format!("{} traveled to {}.", character_name, location_name));
             println!("You travel to {}.", location_name);
 
             if let Some(location) = location {
@@ -227,35 +205,136 @@ fn meditate_and_save(state: &mut GameState, save_path: &PathBuf) -> std::io::Res
     }
 
     state.character.turn += 1;
-    state.character.hp = (state.character.hp + 3).min(state.character.max_hp);
+    state.character.heal(3);
     let character_name = state.character.display_name();
-    state
-        .world
-        .record_history(state.character.turn, format!("{} meditated and recovered.", character_name));
+    state.world.record_history(state.character.turn, format!("{} meditated and recovered.", character_name));
     save_game(save_path, state)?;
     println!("You settle your breathing, recover to {}/{}, and save the game.", state.character.hp, state.character.max_hp);
     Ok(())
 }
 
-fn face_threat(state: &mut GameState) {
+fn confront_threat(state: &mut GameState) -> std::io::Result<()> {
     if !state.threat.active {
         println!("There is no active threat to face.");
         pause();
+        return Ok(());
+    }
+
+    let location = match state.world.location_by_id(state.character.location_id) {
+        Some(location) => location.clone(),
+        None => {
+            println!("The threat cannot be reached here.");
+            pause();
+            return Ok(());
+        }
+    };
+
+    let mut encounter = CombatEncounter {
+        enemy_name: format!("{} wretch", location.name),
+        enemy_hp: 6,
+        enemy_power: 2,
+        enemy_id: state.world.allocate_id(),
+    };
+
+    println!("\nYou step into the threat.");
+    println!("Enemy: {}", encounter.enemy_name);
+
+    loop {
+        if !state.character.alive {
+            break;
+        }
+        if encounter.enemy_hp <= 0 {
+            let location_id = location.id;
+            let character_name = state.character.display_name();
+            let enemy_name = encounter.enemy_name.clone();
+            state.threat.clear();
+            if let Some(loc) = state.world.location_by_id_mut(location_id) {
+                loc.dangerous = false;
+            }
+            state.character.turn += 1;
+            state.world.record_history(state.character.turn, format!("{} defeated {} at {}.", character_name, enemy_name, location.name));
+            state.character.inventory.push(Item {
+                id: encounter.enemy_id,
+                name: format!("Trophy from {}", location.name),
+                description: "A proof that the danger here was confronted and survived.".to_string(),
+            });
+            println!("The threat is broken. The place is quieter now.");
+            break;
+        }
+
+        println!("\n{} HP: {}", encounter.enemy_name, encounter.enemy_hp);
+        println!("Your HP: {}/{}", state.character.hp, state.character.max_hp);
+        let choices = vec!["Attack".to_string(), "Guard".to_string(), "Flee".to_string()];
+        match choose_from_list("Combat action", &choices, None)? {
+            Some(0) => {
+                state.character.turn += 1;
+                let damage = 3;
+                encounter.enemy_hp -= damage;
+                let character_name = state.character.display_name();
+                state.world.record_history(
+                    state.character.turn,
+                    format!("{} struck {} for {} damage.", character_name, encounter.enemy_name, damage),
+                );
+                if encounter.enemy_hp > 0 {
+                    let retaliation = encounter.enemy_power;
+                    take_combat_damage(state, retaliation, &encounter.enemy_name, &location.name);
+                }
+            }
+            Some(1) => {
+                state.character.turn += 1;
+                let retaliation = (encounter.enemy_power - 1).max(0);
+                let character_name = state.character.display_name();
+                state.world.record_history(
+                    state.character.turn,
+                    format!("{} guarded against {}.", character_name, encounter.enemy_name),
+                );
+                if retaliation > 0 {
+                    take_combat_damage(state, retaliation, &encounter.enemy_name, &location.name);
+                } else {
+                    println!("You brace yourself and hold the line.");
+                }
+            }
+            Some(2) => {
+                state.character.turn += 1;
+                let character_name = state.character.display_name();
+                state.world.record_history(
+                    state.character.turn,
+                    format!("{} fled from {} at {}.", character_name, encounter.enemy_name, location.name),
+                );
+                println!("You back away and the threat remains.");
+                break;
+            }
+            _ => {}
+        }
+
+        if state.character.hp <= 0 {
+            state.character.alive = false;
+            let character_name = state.character.display_name();
+            state.world.record_history(
+                state.character.turn,
+                format!("{} fell to {} at {}.", character_name, encounter.enemy_name, location.name),
+            );
+            println!("You were overwhelmed.");
+            break;
+        }
+    }
+
+    Ok(())
+}
+
+fn take_combat_damage(state: &mut GameState, damage: i32, enemy_name: &str, location_name: &str) {
+    if damage <= 0 {
+        println!("The blow glances off harmlessly.");
         return;
     }
 
-    state.character.turn += 1;
+    state.character.hp -= damage;
     let character_name = state.character.display_name();
-    let location_name = state
-        .world
-        .location_by_id(state.character.location_id)
-        .map(|location| location.name.clone())
-        .unwrap_or_else(|| "an unknown place".to_string());
-    state
-        .world
-        .record_history(state.character.turn, format!("{} faced a threat at {}.", character_name, location_name));
-    state.threat.clear();
-    println!("You face the threat and force it back.");
+    state.world.record_history(
+        state.character.turn,
+        format!("{} took {} damage from {} at {}.", character_name, damage, enemy_name, location_name),
+    );
+    println!("You take {} damage.", damage);
 }
 
 fn show_inventory(state: &GameState) {
@@ -275,9 +354,8 @@ fn write_note(state: &mut GameState) -> std::io::Result<()> {
     if !note.is_empty() {
         state.character.notes.push(note.clone());
         state.character.turn += 1;
-        state
-            .world
-            .record_history(state.character.turn, format!("{} noted: {}", state.character.display_name(), note));
+        let character_name = state.character.display_name();
+        state.world.record_history(state.character.turn, format!("{} noted: {}", character_name, note));
     }
     Ok(())
 }
@@ -291,9 +369,10 @@ fn force_death(state: &mut GameState) {
         .location_by_id(state.character.location_id)
         .map(|location| location.name.clone())
         .unwrap_or_else(|| "an unknown place".to_string());
-    state
-        .world
-        .record_history(state.character.turn, format!("{} died at {}.", state.character.display_name(), location_name));
+    state.world.record_history(
+        state.character.turn,
+        format!("{} died at {}.", state.character.display_name(), location_name),
+    );
     println!("The character falls.");
 }
 

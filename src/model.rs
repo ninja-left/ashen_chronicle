@@ -130,6 +130,10 @@ impl World {
         self.locations.iter().find(|location| location.id == id)
     }
 
+    pub fn location_by_id_mut(&mut self, id: EntityId) -> Option<&mut Location> {
+        self.locations.iter_mut().find(|location| location.id == id)
+    }
+
     pub fn location_is_dangerous(&self, id: EntityId) -> bool {
         self.location_by_id(id).map(|location| location.dangerous).unwrap_or(false)
     }
@@ -151,10 +155,9 @@ impl World {
 
     fn seed_demo_world(&mut self) {
         let region_id = self.allocate_id();
-        let region_name = "The Ashen Crown".to_string();
         let region = Region {
             id: region_id,
-            name: region_name,
+            name: "The Ashen Crown".to_string(),
             description: "A bleak frontier where old stone roads still cut through soot and cinder.".to_string(),
             location_ids: Vec::new(),
         };
@@ -216,6 +219,10 @@ impl Character {
 
     pub fn display_name(&self) -> String {
         format!("{} the {}", self.name, self.title)
+    }
+
+    pub fn heal(&mut self, amount: i32) {
+        self.hp = (self.hp + amount).min(self.max_hp);
     }
 }
 

@@ -35,8 +35,8 @@ Completed so far:
 - text UI menus and prompts exist
 - save/load is implemented through a versioned JSON save file
 - a simple travel/history/death loop is playable
-- the menu now uses a single Back label in submenus instead of Cancel/Exit duplication
-- the recovery action is now meditate/relax, and it heals plus saves when the player is safe
+- the menu uses a single Back label in submenus instead of Cancel/Exit duplication
+- the recovery action is meditate, and it heals plus saves when the player is safe
 - a first threat state exists so meditation is blocked in dangerous places
 
 Done when:
@@ -64,8 +64,10 @@ Completed so far:
 - the player can move through a generated world
 - the player can die
 - the death screen offers world reset or world inheritance
-- safe meditation and saving are now tied to world danger
+- safe meditation and saving are tied to world danger
 - a basic threat interaction exists
+- threat resolution now has a real combat loop
+- defeating a threat can clear danger and leave a trophy item behind
 
 Done when:
 - the player can move through a generated world
