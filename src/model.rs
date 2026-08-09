@@ -137,6 +137,12 @@ pub struct Quest {
     pub target_location_id: EntityId,
     pub faction_id: EntityId,
     #[serde(default)]
+    pub giver_npc_id: EntityId,
+    #[serde(default)]
+    pub required_item_name: String,
+    #[serde(default)]
+    pub completed_by: Option<String>,
+    #[serde(default)]
     pub offered: bool,
     #[serde(default)]
     pub completed: bool,
@@ -332,6 +338,8 @@ impl Quest {
         description: impl Into<String>,
         target_location_id: EntityId,
         faction_id: EntityId,
+        giver_npc_id: EntityId,
+        required_item_name: impl Into<String>,
     ) -> Self {
         Self {
             id,
@@ -339,6 +347,9 @@ impl Quest {
             description: description.into(),
             target_location_id,
             faction_id,
+            giver_npc_id,
+            required_item_name: required_item_name.into(),
+            completed_by: None,
             offered: false,
             completed: false,
             reward_claimed: false,

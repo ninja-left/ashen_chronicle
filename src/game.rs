@@ -20,13 +20,6 @@ enum GameAction {
     Quit,
 }
 
-#[derive(Clone, Copy)]
-enum CombatAction {
-    Attack,
-    Guard,
-    Flee,
-}
-
 struct MenuEntry {
     label: String,
     action: GameAction,
@@ -47,7 +40,7 @@ pub fn run() -> std::io::Result<()> {
 }
 
 fn start_or_load(save_path: &PathBuf) -> std::io::Result<GameState> {
-    println!("The Ashen Chronicle v0.7.0");
+    println!("The Ashen Chronicle v0.7.1");
     println!("--------------------------------");
     if save_path.exists() {
         let choice = prompt("Load existing save? [y/N] ")?;
@@ -131,20 +124,34 @@ fn ensure_demo_npcs(state: &mut GameState) {
 }
 
 fn ensure_demo_quests(state: &mut GameState) {
-    if state.quests.is_empty() {
-        if let (Some(shrine_id), Some(faction_id)) = (
-            location_id_by_name(&state.world, "Old Shrine"),
-            faction_id_by_name(state, "Cinder Wardens"),
-        ) {
-            let id = state.world.allocate_id();
-            state.quests.push(Quest::new(
-                id,
-                "Quiet the Old Shrine",
-                "The wardens want the shrine cleared of whatever woke there.",
-                shrine_id,
-                faction_id,
-            ));
+    let shrine_id = location_id_by_name(&state.world, "Old Shrine");
+    let faction_id = faction_id_by_name(state, "Cinder Wardens");
+    let giver_npc_id = npc_id_by_name(state, "Mira");
+    let required_item_name = "Trophy from Old Shrine".to_string();
+
+    if let Some(quest) = quest_by_title_mut(state, "Quiet the Old Shrine") {
+        if quest.giver_npc_id == 0 {
+            if let Some(id) = giver_npc_id {
+                quest.giver_npc_id = id;
+            }
         }
+        if quest.required_item_name.is_empty() {
+            quest.required_item_name = required_item_name.clone();
+        }
+        return;
+    }
+
+    if let (Some(shrine_id), Some(faction_id), Some(giver_npc_id)) = (shrine_id, faction_id, giver_npc_id) {
+        let id = state.world.allocate_id();
+        state.quests.push(Quest::new(
+            id,
+            "Quiet the Old Shrine",
+            "The wardens want the shrine cleared of whatever woke there.",
+            shrine_id,
+            faction_id,
+            giver_npc_id,
+            required_item_name,
+        ));
     }
 }
 
@@ -168,6 +175,10 @@ fn npc_by_name<'a>(state: &'a GameState, name: &str) -> Option<&'a Npc> {
     state.npcs.iter().find(|npc| npc.name == name)
 }
 
+fn npc_id_by_name(state: &GameState, name: &str) -> Option<EntityId> {
+    npc_by_name(state, name).map(|npc| npc.id)
+}
+
 fn npc_ids_at_location(state: &GameState, location_id: EntityId) -> Vec<EntityId> {
     state
         .npcs
@@ -183,10 +194,6 @@ fn location_id_by_name(world: &crate::model::World, name: &str) -> Option<Entity
 
 fn npc_index_by_id(state: &GameState, npc_id: EntityId) -> Option<usize> {
     state.npcs.iter().position(|npc| npc.id == npc_id)
-}
-
-fn quest_by_target_location_mut(state: &mut GameState, location_id: EntityId) -> Option<&mut Quest> {
-    state.quests.iter_mut().find(|quest| quest.target_location_id == location_id)
 }
 
 fn quest_by_title_mut<'a>(state: &'a mut GameState, title: &str) -> Option<&'a mut Quest> {
@@ -308,17 +315,15 @@ fn render_state(state: &GameState) {
             .collect();
         println!("Factions: {}", faction_lines.join(", "));
     }
-    if !state.quests.is_empty() {
-        let quest_lines: Vec<String> = state
-            .quests
+    let visible_quests: Vec<_> = state.quests.iter().filter(|quest| quest.offered || quest.completed).collect();
+    if !visible_quests.is_empty() {
+        let quest_lines: Vec<String> = visible_quests
             .iter()
             .map(|quest| {
                 let status = if quest.completed {
                     if quest.reward_claimed { "completed" } else { "awaiting reward" }
-                } else if quest.offered {
-                    "active"
                 } else {
-                    "unheard"
+                    "active"
                 };
                 format!("{} [{}]", quest.title, status)
             })
@@ -357,7 +362,6 @@ fn location_scene_for_npc(state: &mut GameState, npc_id: EntityId, location_id: 
     };
 
     let npc_name = state.npcs[npc_index].display_name();
-    let npc_title = state.npcs[npc_index].title.clone();
     let npc_location_name = state
         .world
         .location_by_id(state.npcs[npc_index].location_id)
@@ -366,14 +370,30 @@ fn location_scene_for_npc(state: &mut GameState, npc_id: EntityId, location_id: 
     let faction_id = state.npcs[npc_index].faction_id;
     let faction_name = faction_id.and_then(|id| faction_by_id(state, id).map(|faction| faction.name.clone()));
     let faction_rep = faction_id.and_then(|id| faction_by_id(state, id).map(|faction| faction.reputation)).unwrap_or(0);
-    let is_market = npc_location_name == "Hollow Market";
-    let quest = quest_by_title_mut(state, "Quiet the Old Shrine");
+    let current_character_name = state.character.display_name();
 
-    if let Some(quest) = quest {
-        if is_market && !quest.offered && matches!(faction_name.as_deref(), Some("Cinder Wardens")) {
-            quest.offered = true;
+    let quest_index = state.quests.iter().position(|quest| quest.title == "Quiet the Old Shrine");
+    if let Some(quest_index) = quest_index {
+        let (is_giver, mut offered, completed, reward_claimed, required_item_name, completed_by) = {
+            let quest = &state.quests[quest_index];
+            (
+                quest.giver_npc_id == npc_id,
+                quest.offered,
+                quest.completed,
+                quest.reward_claimed,
+                quest.required_item_name.clone(),
+                quest.completed_by.clone(),
+            )
+        };
+        let has_required_item = state.character.inventory.iter().any(|item| item.name == required_item_name);
+
+        if is_giver && !offered && matches!(faction_name.as_deref(), Some("Cinder Wardens")) {
+            if let Some(quest) = state.quests.get_mut(quest_index) {
+                quest.offered = true;
+            }
+            offered = true;
             lines.push(format!(
-                "{} says: 'The Old Shrine stirs again. Clear it, and the {} will remember your name.'",
+                "{} says: 'The Old Shrine stirs again. Bring me proof it is safe, and the {} will remember your name.'",
                 npc_name,
                 faction_name.as_deref().unwrap_or("wardens")
             ));
@@ -381,10 +401,49 @@ fn location_scene_for_npc(state: &mut GameState, npc_id: EntityId, location_id: 
             if let Some(faction_id) = faction_id {
                 remember_faction(state, faction_id, format!("{} offered a shrine quest at the market.", npc_name));
             }
-        } else if quest.completed && !quest.reward_claimed && is_market {
-            lines.push(format!("{} says: 'You did it. The shrine is quiet now.'", npc_name));
-        } else if quest.completed && is_market {
+        }
+
+        if is_giver && offered && !completed && has_required_item {
+            if let Some(quest) = state.quests.get_mut(quest_index) {
+                quest.completed = true;
+                quest.reward_claimed = true;
+                quest.completed_by = Some(current_character_name.clone());
+            }
+            if let Some(fid) = faction_id {
+                adjust_faction_reputation(state, fid, 10, &format!("{} turned in {}.", current_character_name, "Quiet the Old Shrine"));
+                if let Some(faction) = faction_by_id(state, fid) {
+                    println!("{} reputation rises to {:+}.", faction.name, faction.reputation);
+                }
+                update_faction_memory_for_faction(state, fid, format!("{} turned in the quest Quiet the Old Shrine.", current_character_name));
+            }
+            let reward = Item {
+                id: state.world.allocate_id(),
+                name: "Wardens' Seal".to_string(),
+                description: "A rough token of trust from the wardens of the ash road.".to_string(),
+            };
+            state.character.inventory.push(reward.clone());
+            notify_item_gain(&reward);
+            state.world.record_history(state.character.turn, format!("{} turned in the quest: Quiet the Old Shrine.", current_character_name));
+            lines.push(format!("{} says: 'That proof is enough. The shrine is safe again.'", npc_name));
             lines.push(format!("{} says: 'The shrine stays quiet because of you.'", npc_name));
+        } else if is_giver && completed && !reward_claimed {
+            if let Some(quest) = state.quests.get_mut(quest_index) {
+                quest.reward_claimed = true;
+            }
+            let reward = Item {
+                id: state.world.allocate_id(),
+                name: "Wardens' Seal".to_string(),
+                description: "A rough token of trust from the wardens of the ash road.".to_string(),
+            };
+            state.character.inventory.push(reward.clone());
+            notify_item_gain(&reward);
+            lines.push(format!("{} says: 'The wardens still honor that deed.'", npc_name));
+        } else if is_giver && completed {
+            if completed_by.as_deref() == Some(current_character_name.as_str()) {
+                lines.push(format!("{} says: 'The shrine stays quiet because of you.'", npc_name));
+            } else {
+                lines.push(format!("{} says: 'The shrine is quiet. The wardens remember the old deed.'", npc_name));
+            }
         } else if faction_rep < 0 {
             lines.push(format!("{} watches you with open suspicion.", npc_name));
         } else if faction_rep > 0 {
@@ -566,7 +625,6 @@ fn confront_threat(state: &mut GameState) -> std::io::Result<()> {
             };
             state.character.inventory.push(trophy.clone());
             notify_item_gain(&trophy);
-            resolve_quest_for_location(state, location.id);
             update_faction_memory_for_location(state, location.id, format!("{} was cleared of danger.", location.name));
             narrate("The threat is broken. The place is quieter now.");
             break;
@@ -646,52 +704,6 @@ fn take_combat_damage(state: &mut GameState, damage: i32, enemy_name: &str, loca
 fn notify_item_gain(item: &Item) {
     println!("You gain: {}", item.name);
     println!("{}", item.description);
-}
-
-fn resolve_quest_for_location(state: &mut GameState, location_id: EntityId) {
-    let quest_index = match state.quests.iter().position(|quest| quest.target_location_id == location_id) {
-        Some(index) => index,
-        None => return,
-    };
-
-    let faction_id;
-    let quest_title;
-    let completed_now;
-    {
-        let quest = &mut state.quests[quest_index];
-        faction_id = quest.faction_id;
-        quest_title = quest.title.clone();
-        completed_now = !quest.completed;
-        if completed_now {
-            quest.completed = true;
-        }
-    }
-
-    if !completed_now {
-        return;
-    }
-
-    adjust_faction_reputation(state, faction_id, 10, &format!("{} completed.", quest_title));
-    if let Some(faction) = faction_by_id(state, faction_id) {
-        println!("{} reputation rises to {:+}.", faction.name, faction.reputation);
-    }
-
-    let reward = Item {
-        id: state.world.allocate_id(),
-        name: "Wardens' Seal".to_string(),
-        description: "A rough token of trust from the wardens of the ash road.".to_string(),
-    };
-    state.character.inventory.push(reward.clone());
-    notify_item_gain(&reward);
-
-    if let Some(quest) = state.quests.get_mut(quest_index) {
-        quest.reward_claimed = true;
-    }
-
-    let turn = state.character.turn;
-    state.world.record_history(turn, format!("{} completed the quest: {}.", state.character.display_name(), quest_title));
-    update_faction_memory_for_faction(state, faction_id, format!("{} completed the quest {}.", state.character.display_name(), quest_title));
-    narrate("A faction contact will remember this.");
 }
 
 fn update_faction_memory_for_location(state: &mut GameState, location_id: EntityId, memory: String) {
@@ -808,20 +820,20 @@ fn show_inventory(state: &GameState) {
 }
 
 fn review_quests(state: &GameState) {
-    println!("\nQuest log for {}", state.character.display_name());
-    if state.quests.is_empty() {
+    println!();
+    println!("Quest log for {}", state.character.display_name());
+    let visible_quests: Vec<_> = state.quests.iter().filter(|quest| quest.offered || quest.completed).collect();
+    if visible_quests.is_empty() {
         println!("  Nothing yet.");
         pause();
         return;
     }
 
-    for quest in &state.quests {
+    for quest in visible_quests {
         let status = if quest.completed {
             if quest.reward_claimed { "completed" } else { "completed, reward pending" }
-        } else if quest.offered {
-            "active"
         } else {
-            "unheard"
+            "active"
         };
         println!("  - {} [{}]", quest.title, status);
         println!("    {}", quest.description);

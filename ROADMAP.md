@@ -101,6 +101,9 @@ Completed so far:
 - danger can be cleared by defeating a threat, changing the world state
 - faction reputation is tracked and changes when the player completes the shrine quest
 - NPCs remember important events and react differently on later visits
+- the first simple quest now requires a turn-in at Mira and no longer auto-completes at the shrine
+- hidden quests stay out of the quest log until they are actually offered
+- inherited worlds no longer misattribute old quest deeds to a new character
 - the first simple quest is active and rewards the player
 
 Done when:
