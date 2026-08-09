@@ -4,10 +4,28 @@ use crate::model::{
     Condition, Quest, WorldMode,
 };
 use crate::persistence::{load_game, save_game};
-use crate::ui::{choose_from_list, narrate, pause, prompt};
+use crate::ui::{choose_from_list, narrate, pause, prompt, Dashboard};
 use std::mem;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
+
+macro_rules! println {
+    () => {
+        crate::ui::line("");
+    };
+    ($($arg:tt)*) => {
+        crate::ui::line(&format!($($arg)*));
+    };
+}
+
+macro_rules! eprintln {
+    () => {
+        crate::ui::diagnostic("");
+    };
+    ($($arg:tt)*) => {
+        crate::ui::diagnostic(&format!($($arg)*));
+    };
+}
 
 #[derive(Clone, Copy)]
 enum GameAction {
@@ -37,6 +55,7 @@ struct CombatEncounter {
 }
 
 pub fn run() -> std::io::Result<()> {
+    let _ui = crate::ui::init()?;
     let save_path = PathBuf::from("ashen_chronicle_save.json");
     let mut state = start_or_load(&save_path)?;
     bootstrap_campaign_content(&mut state);
@@ -44,7 +63,7 @@ pub fn run() -> std::io::Result<()> {
 }
 
 fn start_or_load(save_path: &PathBuf) -> std::io::Result<GameState> {
-    println!("The Ashen Chronicle v0.14.2");
+    println!("The Ashen Chronicle v{}", env!("CARGO_PKG_VERSION"));
     println!("--------------------------------");
     if save_path.exists() {
         let choice = prompt("Load existing save? [y/N] ")?;
@@ -456,54 +475,77 @@ fn render_state(state: &GameState) {
     let world = &state.world;
     let character = &state.character;
     let location = world.location_by_id(character.location_id);
-    println!("\n=== {} ===", world.name);
-    println!("Character: {}", character.display_name());
-    println!("HP: {}/{}", character.hp, character.max_hp);
-    println!("{}", time_display(world.time_points, world.day));
-    if !character.conditions.is_empty() {
-        let conditions: Vec<String> = character.conditions.iter().map(|c| format!("{} ({})", c.name, c.remaining)).collect();
-        println!("Condition: {}", conditions.join(", "));
-    }
-    if let Some(location) = location {
-        println!("Location: {}", location.name);
-        println!("{}", location.description);
-        if location.dangerous {
-            println!("Danger: unsafe");
-        }
+    let condition_line = if character.conditions.is_empty() {
+        None
+    } else {
+        Some(format!(
+            "Condition: {}",
+            character
+                .conditions
+                .iter()
+                .map(|c| format!("{} ({})", c.name, c.remaining))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ))
+    };
+    let people_line = location.map(|location| {
         let people_here: Vec<String> = state
             .npcs
             .iter()
             .filter(|npc| npc.location_id == location.id)
             .map(|npc| npc.display_name())
             .collect();
-        if !people_here.is_empty() {
-            println!("People: {}", people_here.join(", "));
-        }
+        if people_here.is_empty() { String::new() } else { format!("People: {}", people_here.join(", ")) }
+    }).filter(|line| !line.is_empty());
+    let remains_line = location.map(|location| {
         let remains = corpses_at_location(state, location.id);
-        if !remains.is_empty() {
+        if remains.is_empty() {
+            String::new()
+        } else {
             let names: Vec<String> = remains.iter().map(|corpse| corpse_label(corpse)).collect();
-            println!("Remains: {}", names.join(", "));
+            format!("Remains: {}", names.join(", "))
         }
+    }).filter(|line| !line.is_empty());
+    let exits_line = location.map(|location| {
         let exits: Vec<String> = location
             .exits
             .iter()
             .filter_map(|id| world.location_by_id(*id).map(|loc| loc.name.clone()))
             .collect();
-        println!("Exits: {}", exits.join(", "));
-    }
-    if state.threat.active {
-        println!("Threat: {}", state.threat.label);
-    }
-    if !state.factions.is_empty() {
-        let faction_lines: Vec<String> = state
-            .factions
-            .iter()
-            .map(|faction| format!("{} {:+}", faction.name, faction.reputation))
-            .collect();
-        println!("Reputation: {}", faction_lines.join(" | "));
-    }
+        if exits.is_empty() { String::new() } else { format!("Exits: {}", exits.join(", ")) }
+    }).filter(|line| !line.is_empty());
+    let threat_line = if state.threat.active { Some(format!("Threat: {}", state.threat.label)) } else { None };
+    let reputation_line = if state.factions.is_empty() {
+        None
+    } else {
+        Some(format!(
+            "Reputation: {}",
+            state
+                .factions
+                .iter()
+                .map(|faction| format!("{} {:+}", faction.name, faction.reputation))
+                .collect::<Vec<_>>()
+                .join(" | ")
+        ))
+    };
+    let dashboard = Dashboard {
+        world_name: world.name.clone(),
+        character_line: format!("Character: {}", character.display_name()),
+        hp_line: format!("HP: {}/{}", character.hp, character.max_hp),
+        time_display: time_display(world.time_points, world.day),
+        condition_line,
+        location_name: location.map(|location| format!("Location: {}", location.name)),
+        location_description: location.map(|location| location.description.clone()),
+        danger_line: location.and_then(|location| if location.dangerous { Some("Danger: unsafe".to_string()) } else { None }),
+        people_line,
+        remains_line,
+        exits_line,
+        threat_line,
+        reputation_line,
+        action_hint: Some("Use numbers in menus. Arrow-key navigation is coming in a later pass.".to_string()),
+    };
+    crate::ui::set_dashboard(dashboard);
 }
-
 fn maybe_run_location_scene(state: &mut GameState) -> std::io::Result<()> {
     let location_id = state.character.location_id;
     if state.last_announced_location_id == Some(location_id) {

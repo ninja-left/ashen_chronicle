@@ -1,4 +1,5 @@
 use crate::model::{Location, Region, World};
+use crate::ui;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::env;
@@ -319,7 +320,7 @@ pub fn load_campaign_content_report() -> ContentLoadReport {
     let mut report = ContentLoadReport::with_content(match load_base_content() {
         Ok(content) => content,
         Err(err) => {
-            eprintln!("Could not load campaign content from disk: {err}");
+            ui::diagnostic(&format!("Could not load campaign content from disk: {err}"));
             default_campaign_content()
         }
     });
@@ -409,9 +410,9 @@ fn discover_mods() -> Vec<DiscoveredMod> {
         match fs::read_to_string(&manifest_path) {
             Ok(data) => match serde_json::from_str::<ModManifest>(&data) {
                 Ok(manifest) => found.push(DiscoveredMod { manifest, manifest_path }),
-                Err(err) => eprintln!("Could not parse mod manifest {}: {}", manifest_path.display(), err),
+                Err(err) => ui::diagnostic(&format!("Could not parse mod manifest {}: {}", manifest_path.display(), err)),
             },
-            Err(err) => eprintln!("Could not read mod manifest {}: {}", manifest_path.display(), err),
+            Err(err) => ui::diagnostic(&format!("Could not read mod manifest {}: {}", manifest_path.display(), err)),
         }
     }
 

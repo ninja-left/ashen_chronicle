@@ -236,7 +236,38 @@ Completed:
 
 ## Phase 8: Polish and balance
 
-Status: in progress.
+Status: complete.
+
+Completed so far:
+- location art and scene presentation are now integrated into the play loop
+- combat, questing, meditation, inventory, and death handling have stable player-facing flows
+- the remaining work now centers on presentation cleanup and terminal UX instead of core gameplay scaffolding
+
+Done when:
+- the core systems feel cohesive and readable
+
+## Phase 9: Terminal UI foundation
+
+Goal: replace line-by-line terminal output with a persistent screen layout.
+
+Work items:
+- alternate-screen terminal wrapper
+- structured dashboard for world, character, and location state
+- event log panel
+- modal prompts and numeric selection menus
+- preserve existing text scenes inside the new screen shell
+
+Status: complete.
+
+Completed so far:
+- the game now boots inside an alternate-screen terminal session
+- the main view renders as a persistent dashboard instead of a pure scrollback stream
+- story output is collected into an on-screen log panel
+- prompts and choice menus now render through the shared UI layer
+- the version has been bumped to v0.15.0 to mark the UI foundation change
+
+Done when:
+- the game no longer depends on raw scrollback for normal play
 
 Goal: turn the system into a real game.
 
