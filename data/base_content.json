@@ -214,7 +214,7 @@
     {
       "location_name": "Blackroot Hollow",
       "enemy_name": "Rootbound Stalker",
-      "enemy_hp": 8,
+      "enemy_hp": 7,
       "enemy_power": 2,
       "trophy_item_name": "Rootbound Fang",
       "description": "Something with bark-hard limbs stalks between the roots."
@@ -222,8 +222,8 @@
     {
       "location_name": "Drowned Chapel",
       "enemy_name": "Drowned Penitent",
-      "enemy_hp": 10,
-      "enemy_power": 3,
+      "enemy_hp": 9,
+      "enemy_power": 2,
       "trophy_item_name": "Drowned Rosary",
       "description": "A waterlogged shape rises from the nave, dragging a chain of prayer beads."
     }

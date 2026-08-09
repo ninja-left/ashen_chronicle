@@ -42,13 +42,24 @@ pub fn run() -> std::io::Result<()> {
 }
 
 fn start_or_load(save_path: &PathBuf) -> std::io::Result<GameState> {
-    println!("The Ashen Chronicle v0.11.0");
+    println!("The Ashen Chronicle v0.12.0");
     println!("--------------------------------");
     if save_path.exists() {
         let choice = prompt("Load existing save? [y/N] ")?;
         if choice.eq_ignore_ascii_case("y") {
             match load_game(save_path) {
-                Ok(state) => return Ok(state),
+                Ok(state) => {
+                    let warnings = validate_loaded_state(&state);
+                    if warnings.is_empty() {
+                        println!("Save loaded successfully.");
+                    } else {
+                        println!("Save loaded with {} warning(s):", warnings.len());
+                        for warning in warnings {
+                            println!("  - {}", warning);
+                        }
+                    }
+                    return Ok(state);
+                }
                 Err(err) => {
                     println!("Could not load save: {err}");
                     println!("Starting a new world instead.");
@@ -57,6 +68,22 @@ fn start_or_load(save_path: &PathBuf) -> std::io::Result<GameState> {
         }
     }
     create_from_prompts(WorldMode::New)
+}
+
+fn validate_loaded_state(state: &GameState) -> Vec<String> {
+    let mut warnings = Vec::new();
+    if state.world.location_by_id(state.character.location_id).is_none() {
+        warnings.push(format!("character location id {} does not exist", state.character.location_id));
+    }
+    for quest in &state.quests {
+        if state.world.location_by_id(quest.target_location_id).is_none() {
+            warnings.push(format!("quest '{}' points to missing target location {}", quest.title, quest.target_location_id));
+        }
+        if state.factions.iter().all(|faction| faction.id != quest.faction_id) {
+            warnings.push(format!("quest '{}' points to missing faction {}", quest.title, quest.faction_id));
+        }
+    }
+    warnings
 }
 
 fn create_from_prompts(mode: WorldMode) -> std::io::Result<GameState> {
@@ -351,19 +378,13 @@ fn render_state(state: &GameState) {
     let character = &state.character;
     let location = world.location_by_id(character.location_id);
     println!("\n=== {} ===", world.name);
-    println!("World mode: {:?}", world.mode);
     println!("Character: {}", character.display_name());
     println!("HP: {}/{}", character.hp, character.max_hp);
     if let Some(location) = location {
-        let region_name = world.region_by_id(location.region_id).map(|region| region.name.as_str()).unwrap_or("Unknown region");
-        println!("Location: {} ({})", location.name, region_name);
+        println!("Location: {}", location.name);
         println!("{}", location.description);
-        if let Some(art) = load_campaign_content().location_art_for(&location.name) {
-            println!("");
-            println!("{}", art);
-        }
         if location.dangerous {
-            println!("Danger: this place is unsafe.");
+            println!("Danger: unsafe");
         }
         let people_here: Vec<String> = state
             .npcs
@@ -372,12 +393,12 @@ fn render_state(state: &GameState) {
             .map(|npc| npc.display_name())
             .collect();
         if !people_here.is_empty() {
-            println!("People here: {}", people_here.join(", "));
+            println!("People: {}", people_here.join(", "));
         }
         let remains = corpses_at_location(state, location.id);
         if !remains.is_empty() {
             let names: Vec<String> = remains.iter().map(|corpse| corpse_label(corpse)).collect();
-            println!("Remains here: {}", names.join(", "));
+            println!("Remains: {}", names.join(", "));
         }
         let exits: Vec<String> = location
             .exits
@@ -388,17 +409,15 @@ fn render_state(state: &GameState) {
     }
     if state.threat.active {
         println!("Threat: {}", state.threat.label);
-        println!("{}", state.threat.description);
     }
     if !state.factions.is_empty() {
         let faction_lines: Vec<String> = state
             .factions
             .iter()
-            .map(|faction| format!("{} ({:+})", faction.name, faction.reputation))
+            .map(|faction| format!("{} {:+}", faction.name, faction.reputation))
             .collect();
-        println!("Factions: {}", faction_lines.join(", "));
+        println!("Reputation: {}", faction_lines.join(" | "));
     }
-    println!("History entries: {}", world.history.len());
 }
 
 fn maybe_run_location_scene(state: &mut GameState) -> std::io::Result<()> {
@@ -610,7 +629,11 @@ fn complete_quest(state: &mut GameState, quest_index: usize) -> bool {
     notify_item_gain(&reward);
     grant_reward_reputation(state, &reward);
     state.world.record_history(state.character.turn, format!("{} completed {}.", current_character_name, title));
-    println!("The deed is recorded, and the quest item is no longer needed.");
+    println!("
+Quest complete: {}", title);
+    println!("  Quest item consumed: {}", required_item_name);
+    println!("  Reward: {}", reward.name);
+    println!("  Reputation: +5 for completing the deed, +5 while carrying the reward");
     true
 }
 
@@ -783,6 +806,10 @@ fn confront_threat(state: &mut GameState) -> std::io::Result<()> {
             state.character.inventory.push(trophy.clone());
             notify_item_gain(&trophy);
             update_faction_memory_for_location(state, location.id, format!("{} was cleared of danger.", location.name));
+            println!("\nCombat result: victory");
+            println!("  Defeated: {}", enemy_name);
+            println!("  Loot: {}", trophy.name);
+            println!("  HP remaining: {}/{}", state.character.hp, state.character.max_hp);
             narrate("The threat is broken. The place is quieter now.");
             break;
         }
@@ -795,6 +822,7 @@ fn confront_threat(state: &mut GameState) -> std::io::Result<()> {
                 state.character.turn += 1;
                 let damage = 3;
                 encounter.enemy_hp -= damage;
+                println!("You strike {} for {} damage.", encounter.enemy_name, damage);
                 let character_name = state.character.display_name();
                 state.world.record_history(
                     state.character.turn,
@@ -813,10 +841,9 @@ fn confront_threat(state: &mut GameState) -> std::io::Result<()> {
                     state.character.turn,
                     format!("{} guarded against {}.", character_name, encounter.enemy_name),
                 );
+                println!("You guard. Incoming damage is reduced to {}.", retaliation);
                 if retaliation > 0 {
                     take_combat_damage(state, retaliation, &encounter.enemy_name, &location.name);
-                } else {
-                    narrate("You brace yourself and hold the line.");
                 }
             }
             Some(2) => {
@@ -826,7 +853,8 @@ fn confront_threat(state: &mut GameState) -> std::io::Result<()> {
                     state.character.turn,
                     format!("{} fled from {} at {}.", character_name, encounter.enemy_name, location.name),
                 );
-                narrate("You back away and the threat remains.");
+                println!("You flee. The threat remains.");
+                pause();
                 break;
             }
             _ => {}
@@ -869,7 +897,7 @@ fn take_combat_damage(state: &mut GameState, damage: i32, enemy_name: &str, loca
         state.character.turn,
         format!("{} took {} damage from {} at {}.", character_name, damage, enemy_name, location_name),
     );
-    narrate(&format!("You take {} damage.", damage));
+    println!("You take {} damage from {}.", damage, enemy_name);
 }
 
 fn notify_item_gain(item: &Item) {
@@ -952,11 +980,13 @@ fn search_remains(state: &mut GameState) -> std::io::Result<()> {
             return Ok(());
         }
 
+        let item_names: Vec<String> = items.iter().map(|item| item.name.clone()).collect();
         for item in items {
             notify_item_gain(&item);
             grant_reward_reputation(state, &item);
             state.character.inventory.push(item);
         }
+        println!("Recovered: {}", item_names.join(", "));
 
         state.character.turn += 1;
         state.world.record_history(
@@ -981,9 +1011,6 @@ fn show_inventory(state: &GameState) {
     } else {
         for item in &state.character.inventory {
             println!("  - {}: {}", item.name, item.description);
-            if let Some(art) = load_campaign_content().item_art_for(&item.name) {
-                println!("{}", art);
-            }
         }
     }
     pause();

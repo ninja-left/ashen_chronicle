@@ -236,6 +236,8 @@ Completed:
 
 ## Phase 8: Polish and balance
 
+Status: in progress.
+
 Goal: turn the system into a real game.
 
 Work items:
@@ -249,6 +251,17 @@ Work items:
 Done when:
 - the game is stable enough for long play sessions
 - progression, death, and inheritance all feel fair
+
+## v0.12.0 Polish and balance pass
+
+Completed:
+- simplified the main status screen to remove repeated world-mode and history-count clutter
+- removed repeated location and inventory ASCII art from the always-visible screens while retaining contextual visuals during interaction and item acquisition
+- tightened combat output so attacks and damage resolve in one readable sequence instead of pausing after every hit
+- added explicit combat victory and quest reward summaries
+- added clearer save-load validation warnings for broken runtime references and inconsistent completed quest deeds
+- adjusted dangerous encounters to reduce early-game damage spikes while preserving different threat durability
+- reduced repetitive travel/location presentation by keeping the recurring status display focused on actionable information
 
 ## Tracking rule
 
