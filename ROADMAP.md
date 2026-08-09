@@ -320,7 +320,7 @@ Use this roadmap as the main progress checklist. If a feature is not helping one
 
 Goal: make each life develop over time while the world continues to age between lives.
 
-Status: in progress.
+Status: complete.
 
 ## v0.14.1 Character progression, NPC availability, and Time foundation
 
@@ -357,7 +357,7 @@ Work items:
 - clearer modal feedback for pauses and confirmations
 - keep scene art and narrative logs inside the same screen shell
 
-Status: in progress.
+Status: complete.
 
 ## v0.16.0 Keyboard-driven interaction pass
 
@@ -367,4 +367,31 @@ Completed:
 - changed pause handling to a single-key confirmation instead of Enter-only input
 - updated the on-screen control hint to match the new keyboard flow
 - bumped the project version to 0.16.0
+
+## Phase 11: Responsive ratatui renderer
+
+Goal: make the terminal UI survive narrow screens and modernize the drawing layer.
+
+Work items:
+- ratatui-based rendering backend
+- compact layout for vertical/mobile terminals
+- wide layout for desktop terminals
+- modal prompt overlay and centered popups
+- resize-safe panel rendering
+
+Status: complete.
+
+Completed so far:
+- the provisional hand-rolled output shell was replaced with a ratatui-backed renderer
+- the UI now switches between compact and wide layouts based on terminal width and height
+- prompts and menus render in centered overlays instead of relying on raw scrollback
+- the existing gameplay screens keep working inside the new layout shell
+
+## v0.17.0 Responsive ratatui renderer
+
+Completed:
+- migrated the terminal renderer to ratatui
+- added width/height-aware compact rendering for narrow vertical screens
+- kept the existing gameplay flows working inside the new screen shell
+- bumped the project version to 0.17.0
 

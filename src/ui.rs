@@ -1,8 +1,13 @@
 use crossterm::cursor;
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers};
-use crossterm::terminal::{self, Clear, ClearType, EnterAlternateScreen, LeaveAlternateScreen};
 use crossterm::execute;
-use std::io::{self, Write};
+use crossterm::terminal::{self, EnterAlternateScreen, LeaveAlternateScreen};
+use ratatui::backend::CrosstermBackend;
+use ratatui::layout::{Constraint, Direction, Layout, Rect};
+use ratatui::prelude::{Color, Modifier, Style};
+use ratatui::widgets::{Block, Borders, Clear, Paragraph, Wrap};
+use ratatui::Terminal;
+use std::io::{self, Stdout, Write};
 use std::sync::{Mutex, OnceLock};
 
 #[derive(Clone, Default)]
@@ -23,11 +28,22 @@ pub struct Dashboard {
     pub action_hint: Option<String>,
 }
 
-#[derive(Default)]
 struct UiRuntime {
     dashboard: Dashboard,
     log: Vec<String>,
     initialized: bool,
+    terminal: Option<Terminal<CrosstermBackend<Stdout>>>,
+}
+
+impl Default for UiRuntime {
+    fn default() -> Self {
+        Self {
+            dashboard: Dashboard::default(),
+            log: Vec::new(),
+            initialized: false,
+            terminal: None,
+        }
+    }
 }
 
 static UI: OnceLock<Mutex<UiRuntime>> = OnceLock::new();
@@ -46,9 +62,15 @@ fn runtime() -> &'static Mutex<UiRuntime> {
 
 pub fn init() -> io::Result<UiGuard> {
     enter_terminal()?;
+    let stdout = io::stdout();
+    let backend = CrosstermBackend::new(stdout);
+    let mut terminal = Terminal::new(backend)?;
+    terminal.clear()?;
+
     let mut state = runtime().lock().unwrap();
     state.initialized = true;
-    render_locked(&state, None);
+    state.terminal = Some(terminal);
+    render_locked(&mut state, None)?;
     Ok(UiGuard)
 }
 
@@ -56,7 +78,7 @@ pub fn set_dashboard(dashboard: Dashboard) {
     let mut state = runtime().lock().unwrap();
     state.dashboard = dashboard;
     state.initialized = true;
-    render_locked(&state, None);
+    let _ = render_locked(&mut state, None);
 }
 
 pub fn line(text: &str) {
@@ -66,7 +88,7 @@ pub fn line(text: &str) {
     }
     trim_log(&mut state.log);
     if state.initialized {
-        render_locked(&state, None);
+        let _ = render_locked(&mut state, None);
     } else {
         println!("{text}");
     }
@@ -95,7 +117,7 @@ pub fn prompt(message: &str) -> io::Result<String> {
             format!("> {buffer}"),
             "Enter to confirm, Esc to cancel.".to_string(),
         ];
-        render_locked(&state, Some(&prompt_lines));
+        let _ = render_locked(&mut state, Some(&prompt_lines));
         drop(state);
 
         match read_key()? {
@@ -129,8 +151,7 @@ pub fn choose_from_list(
     zero_label: Option<&str>,
 ) -> io::Result<Option<usize>> {
     if !runtime().lock().unwrap().initialized {
-        let mut lines = Vec::with_capacity(options.len() + 2);
-        lines.push(title.to_string());
+        let mut lines = vec![title.to_string()];
         for (index, option) in options.iter().enumerate() {
             lines.push(format!("  {}. {}", index + 1, option));
         }
@@ -147,12 +168,14 @@ pub fn choose_from_list(
     let mut selected = 0usize;
     let back_index = options.len();
     let mut state = runtime().lock().unwrap();
+
     loop {
-        let mut prompt_lines = Vec::new();
-        prompt_lines.push(title.to_string());
-        prompt_lines.push(String::new());
-        prompt_lines.push("Use ↑ ↓ or j/k, Enter to confirm, Esc to go back.".to_string());
-        prompt_lines.push(String::new());
+        let mut prompt_lines = vec![
+            title.to_string(),
+            String::new(),
+            "Use ↑ ↓ or j/k, Enter to confirm, Esc to go back.".to_string(),
+            String::new(),
+        ];
         for (index, option) in options.iter().enumerate() {
             let marker = if index == selected { '▶' } else { ' ' };
             prompt_lines.push(format!("{marker} {}. {option}", index + 1));
@@ -162,13 +185,17 @@ pub fn choose_from_list(
             prompt_lines.push(format!("{marker} 0. {label}"));
         }
 
-        render_locked(&state, Some(&prompt_lines));
+        let _ = render_locked(&mut state, Some(&prompt_lines));
         drop(state);
 
         match read_key()? {
             KeyCode::Up | KeyCode::Char('k') => {
                 if selected == 0 {
-                    selected = if zero_label.is_some() { back_index } else { options.len().saturating_sub(1) };
+                    selected = if zero_label.is_some() {
+                        back_index
+                    } else {
+                        options.len().saturating_sub(1)
+                    };
                 } else {
                     selected -= 1;
                 }
@@ -184,7 +211,11 @@ pub fn choose_from_list(
             }
             KeyCode::Home => selected = 0,
             KeyCode::End => {
-                selected = if zero_label.is_some() { back_index } else { options.len().saturating_sub(1) };
+                selected = if zero_label.is_some() {
+                    back_index
+                } else {
+                    options.len().saturating_sub(1)
+                };
             }
             KeyCode::Enter => {
                 return Ok(if selected == back_index && zero_label.is_some() {
@@ -216,7 +247,11 @@ pub fn choose_from_list(
     }
 }
 
-fn choose_via_stdin(message: &str, option_count: usize, zero_label: Option<&str>) -> io::Result<Option<usize>> {
+fn choose_via_stdin(
+    message: &str,
+    option_count: usize,
+    zero_label: Option<&str>,
+) -> io::Result<Option<usize>> {
     println!("{message}");
     loop {
         print!("> ");
@@ -240,9 +275,13 @@ fn wait_for_key(message: &str) -> io::Result<()> {
         return Ok(());
     }
 
-    let state = runtime().lock().unwrap();
-    let prompt_lines = vec![message.to_string(), String::new(), "Press any key to continue.".to_string()];
-    render_locked(&state, Some(&prompt_lines));
+    let mut state = runtime().lock().unwrap();
+    let prompt_lines = vec![
+        message.to_string(),
+        String::new(),
+        "Press any key to continue.".to_string(),
+    ];
+    let _ = render_locked(&mut state, Some(&prompt_lines));
     drop(state);
 
     loop {
@@ -271,7 +310,7 @@ fn is_ctrl_char(ch: char) -> bool {
 fn enter_terminal() -> io::Result<()> {
     terminal::enable_raw_mode()?;
     let mut out = io::stdout();
-    execute!(out, EnterAlternateScreen, cursor::Hide, Clear(ClearType::All), cursor::MoveTo(0, 0))?;
+    execute!(out, EnterAlternateScreen, cursor::Hide)?;
     Ok(())
 }
 
@@ -283,145 +322,229 @@ fn restore_terminal() -> io::Result<()> {
 }
 
 fn trim_log(log: &mut Vec<String>) {
-    const MAX_LOG_LINES: usize = 14;
+    const MAX_LOG_LINES: usize = 80;
     if log.len() > MAX_LOG_LINES {
         let excess = log.len() - MAX_LOG_LINES;
         log.drain(0..excess);
     }
 }
 
-fn render_locked(state: &UiRuntime, prompt: Option<&[String]>) {
-    let width = terminal_width().clamp(72, 120);
-    let mut out = io::stdout();
-    let _ = out.write_all(b"\x1b[?25l\x1b[2J\x1b[H");
+fn render_locked(state: &mut UiRuntime, prompt: Option<&[String]>) -> io::Result<()> {
+    let dashboard = state.dashboard.clone();
+    let log = state.log.clone();
+    let Some(terminal) = state.terminal.as_mut() else {
+        return Ok(());
+    };
 
-    let mut lines = Vec::new();
-    lines.push(center_text("The Ashen Chronicle", width));
-    lines.push(repeat_char('=', width));
-    lines.push(format!("World: {}", state.dashboard.world_name));
-    if !state.dashboard.character_line.is_empty() {
-        lines.push(state.dashboard.character_line.clone());
-    }
-    if !state.dashboard.hp_line.is_empty() {
-        lines.push(state.dashboard.hp_line.clone());
-    }
-    if !state.dashboard.time_display.is_empty() {
-        lines.push(String::new());
-        lines.extend(state.dashboard.time_display.lines().map(|line| line.to_string()));
+    terminal.draw(|frame| {
+        let area = frame.area();
+        frame.render_widget(Clear, area);
+        draw_dashboard(frame, area, &dashboard, &log, prompt);
+    })?;
+    Ok(())
+}
+
+fn draw_dashboard(
+    frame: &mut ratatui::Frame<'_>,
+    area: Rect,
+    dashboard: &Dashboard,
+    log: &[String],
+    prompt: Option<&[String]>,
+) {
+    let compact = area.width < 100 || area.height < 32;
+    let root = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Length(5), Constraint::Min(8), Constraint::Length(3)])
+        .split(area);
+
+    render_header(frame, root[0], dashboard, compact);
+
+    if compact {
+        let body = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Percentage(30),
+                Constraint::Percentage(34),
+                Constraint::Percentage(36),
+            ])
+            .split(root[1]);
+        render_panel(frame, body[0], "Status", status_lines(dashboard), compact);
+        render_panel(frame, body[1], "Location", location_lines(dashboard), compact);
+        render_log(frame, body[2], log, compact);
+    } else {
+        let body = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Percentage(38), Constraint::Percentage(62)])
+            .split(root[1]);
+        let left = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Length(10), Constraint::Min(4)])
+            .split(body[0]);
+        render_panel(frame, left[0], "Status", status_lines(dashboard), compact);
+        render_panel(
+            frame,
+            left[1],
+            "Controls",
+            vec![dashboard.action_hint.clone().unwrap_or_else(|| "Use arrows, Enter, and Esc.".to_string())],
+            compact,
+        );
+        let right = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Length(12), Constraint::Min(4)])
+            .split(body[1]);
+        render_panel(frame, right[0], "Location", location_lines(dashboard), compact);
+        render_log(frame, right[1], log, compact);
     }
 
-    push_box(
-        &mut lines,
-        "Current place",
-        vec![
-            state.dashboard.location_name.clone().unwrap_or_else(|| "Unknown location".to_string()),
-            state.dashboard.location_description.clone().unwrap_or_default(),
-        ],
-        width,
-    );
-
-    let mut status_lines = Vec::new();
-    if let Some(line) = &state.dashboard.condition_line {
-        status_lines.push(line.clone());
-    }
-    if let Some(line) = &state.dashboard.danger_line {
-        status_lines.push(line.clone());
-    }
-    if let Some(line) = &state.dashboard.threat_line {
-        status_lines.push(line.clone());
-    }
-    if let Some(line) = &state.dashboard.reputation_line {
-        status_lines.push(line.clone());
-    }
-    if !status_lines.is_empty() {
-        push_box(&mut lines, "Status", status_lines, width);
-    }
-
-    let mut context_lines = Vec::new();
-    if let Some(line) = &state.dashboard.people_line {
-        context_lines.push(line.clone());
-    }
-    if let Some(line) = &state.dashboard.remains_line {
-        context_lines.push(line.clone());
-    }
-    if let Some(line) = &state.dashboard.exits_line {
-        context_lines.push(line.clone());
-    }
-    if !context_lines.is_empty() {
-        push_box(&mut lines, "Nearby", context_lines, width);
-    }
-
-    push_box(&mut lines, "Log", state.log.clone(), width);
-
-    if let Some(hint) = &state.dashboard.action_hint {
-        push_box(&mut lines, "Controls", vec![hint.clone()], width);
-    }
+    render_footer(frame, root[2], dashboard, compact);
 
     if let Some(prompt_lines) = prompt {
-        push_box(&mut lines, "Input", prompt_lines.to_vec(), width);
+        render_prompt(frame, area, prompt_lines, compact);
     }
-
-    for line in lines {
-        let _ = writeln!(out, "{}", line);
-    }
-    let _ = out.flush();
 }
 
-fn push_box(lines: &mut Vec<String>, title: &str, content: Vec<String>, width: usize) {
-    let inner_width = width.saturating_sub(4).max(20);
-    lines.push(format!("+{}+", repeat_char('-', inner_width + 2)));
-    lines.push(format!("| {:^inner_width$} |", title, inner_width = inner_width + 1));
-    lines.push(format!("+{}+", repeat_char('-', inner_width + 2)));
-    for paragraph in content {
-        if paragraph.is_empty() {
-            lines.push(format!("| {:inner_width$} |", "", inner_width = inner_width + 1));
-            continue;
-        }
-        for wrapped in wrap_text(&paragraph, inner_width + 1) {
-            lines.push(format!("| {:inner_width$} |", wrapped, inner_width = inner_width + 1));
-        }
+fn render_header(frame: &mut ratatui::Frame<'_>, area: Rect, dashboard: &Dashboard, compact: bool) {
+    let mut lines = Vec::new();
+    if !dashboard.world_name.is_empty() {
+        lines.push(format!("World: {}", dashboard.world_name));
     }
-    lines.push(format!("+{}+", repeat_char('-', inner_width + 2)));
+    if !dashboard.character_line.is_empty() {
+        lines.push(dashboard.character_line.clone());
+    }
+    if !dashboard.hp_line.is_empty() {
+        lines.push(dashboard.hp_line.clone());
+    }
+    if !dashboard.time_display.is_empty() {
+        lines.push(dashboard.time_display.clone());
+    }
+    let paragraph = Paragraph::new(lines.join("\n"))
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("The Ashen Chronicle")
+                .style(border_style(compact)),
+        )
+        .wrap(Wrap { trim: true });
+    frame.render_widget(paragraph, area);
 }
 
-fn wrap_text(text: &str, width: usize) -> Vec<String> {
-    let mut out = Vec::new();
-    let mut current = String::new();
-    for word in text.split_whitespace() {
-        if current.is_empty() {
-            current.push_str(word);
-        } else if current.len() + 1 + word.len() <= width {
-            current.push(' ');
-            current.push_str(word);
-        } else {
-            out.push(current);
-            current = word.to_string();
-        }
-    }
-    if !current.is_empty() {
-        out.push(current);
-    }
-    if out.is_empty() {
-        out.push(String::new());
-    }
-    out
+fn render_panel(frame: &mut ratatui::Frame<'_>, area: Rect, title: &str, lines: Vec<String>, compact: bool) {
+    let content = if lines.is_empty() {
+        vec!["None.".to_string()]
+    } else {
+        lines
+    };
+    let paragraph = Paragraph::new(content.join("\n"))
+        .block(Block::default().borders(Borders::ALL).title(title).style(border_style(compact)))
+        .wrap(Wrap { trim: true });
+    frame.render_widget(paragraph, area);
 }
 
-fn terminal_width() -> usize {
-    terminal::size().map(|(width, _)| width as usize).unwrap_or(80)
+fn render_log(frame: &mut ratatui::Frame<'_>, area: Rect, log: &[String], compact: bool) {
+    let content = if log.is_empty() {
+        vec!["No recent messages.".to_string()]
+    } else {
+        log.to_vec()
+    };
+    let paragraph = Paragraph::new(content.join("\n"))
+        .block(Block::default().borders(Borders::ALL).title("Messages").style(border_style(compact)))
+        .wrap(Wrap { trim: true });
+    frame.render_widget(paragraph, area);
 }
 
-fn repeat_char(ch: char, count: usize) -> String {
-    std::iter::repeat(ch).take(count).collect()
+fn render_footer(frame: &mut ratatui::Frame<'_>, area: Rect, dashboard: &Dashboard, compact: bool) {
+    let hint = dashboard
+        .action_hint
+        .clone()
+        .unwrap_or_else(|| "Use arrows, Enter, and Esc.".to_string());
+    let paragraph = Paragraph::new(hint)
+        .block(Block::default().borders(Borders::ALL).title("Controls").style(border_style(compact)))
+        .wrap(Wrap { trim: true });
+    frame.render_widget(paragraph, area);
 }
 
-fn center_text(text: &str, width: usize) -> String {
-    let text_len = text.chars().count();
-    if text_len >= width {
-        return text.to_string();
+fn render_prompt(frame: &mut ratatui::Frame<'_>, area: Rect, prompt_lines: &[String], compact: bool) {
+    let popup = centered_rect(72, if compact { 62 } else { 52 }, area);
+    frame.render_widget(Clear, popup);
+    let paragraph = Paragraph::new(prompt_lines.join("\n"))
+        .block(Block::default().borders(Borders::ALL).title("Prompt").style(border_style(compact)))
+        .wrap(Wrap { trim: true });
+    frame.render_widget(paragraph, popup);
+}
+
+fn status_lines(dashboard: &Dashboard) -> Vec<String> {
+    let mut lines = Vec::new();
+    if !dashboard.world_name.is_empty() {
+        lines.push(format!("World: {}", dashboard.world_name));
     }
-    let padding = width - text_len;
-    let left = padding / 2;
-    let right = padding - left;
-    format!("{}{}{}", repeat_char(' ', left), text, repeat_char(' ', right))
+    if !dashboard.character_line.is_empty() {
+        lines.push(dashboard.character_line.clone());
+    }
+    if !dashboard.hp_line.is_empty() {
+        lines.push(dashboard.hp_line.clone());
+    }
+    if !dashboard.time_display.is_empty() {
+        lines.push(dashboard.time_display.clone());
+    }
+    if let Some(line) = &dashboard.condition_line {
+        lines.push(line.clone());
+    }
+    if let Some(line) = &dashboard.danger_line {
+        lines.push(line.clone());
+    }
+    if let Some(line) = &dashboard.reputation_line {
+        lines.push(line.clone());
+    }
+    lines
+}
+
+fn location_lines(dashboard: &Dashboard) -> Vec<String> {
+    let mut lines = Vec::new();
+    if let Some(line) = &dashboard.location_name {
+        lines.push(line.clone());
+    }
+    if let Some(line) = &dashboard.location_description {
+        lines.push(line.clone());
+    }
+    if let Some(line) = &dashboard.people_line {
+        lines.push(line.clone());
+    }
+    if let Some(line) = &dashboard.remains_line {
+        lines.push(line.clone());
+    }
+    if let Some(line) = &dashboard.exits_line {
+        lines.push(line.clone());
+    }
+    if let Some(line) = &dashboard.threat_line {
+        lines.push(line.clone());
+    }
+    lines
+}
+
+fn border_style(compact: bool) -> Style {
+    if compact {
+        Style::default().fg(Color::Yellow)
+    } else {
+        Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)
+    }
+}
+
+fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
+    let popup_layout = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Percentage((100 - percent_y) / 2),
+            Constraint::Percentage(percent_y),
+            Constraint::Percentage((100 - percent_y) / 2),
+        ])
+        .split(r);
+
+    Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Percentage((100 - percent_x) / 2),
+            Constraint::Percentage(percent_x),
+            Constraint::Percentage((100 - percent_x) / 2),
+        ])
+        .split(popup_layout[1])[1]
 }

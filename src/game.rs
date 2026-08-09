@@ -542,7 +542,7 @@ fn render_state(state: &GameState) {
         exits_line,
         threat_line,
         reputation_line,
-        action_hint: Some("Use ↑ ↓, Enter, and Esc in menus.".to_string()),
+        action_hint: Some("Arrows / Enter / Esc".to_string()),
     };
     crate::ui::set_dashboard(dashboard);
 }
