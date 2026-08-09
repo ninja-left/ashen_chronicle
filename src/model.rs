@@ -377,12 +377,18 @@ pub fn create_inherited_state(state: &GameState, character_name: String, title: 
     }
     let turn = world.history.last().map(|entry| entry.turn).unwrap_or(0);
     world.record_history(turn, format!("{} inherited the world.", character.display_name()));
+    let mut inherited_factions = state.factions.clone();
+    for faction in &mut inherited_factions {
+        // Reputation belongs to the character, not the world. Memories remain
+        // persistent so factions can still react to what previous lives did.
+        faction.reputation = 0;
+    }
     GameState {
         world,
         character,
         threat: ThreatState::default(),
         corpses: state.corpses.clone(),
-        factions: state.factions.clone(),
+        factions: inherited_factions,
         npcs: state.npcs.clone(),
         quests: Vec::new(),
         last_announced_location_id: None,

@@ -151,6 +151,17 @@ Completed:
 - required quest items are consumed when a quest is successfully turned in
 - fixed campaign quest bootstrapping so the shrine quest is not recreated on every load
 
+
+## v0.8.2 Quest interaction and reputation maintenance
+
+Completed:
+- quest offering and turn-in now use an explicit Talk action with NPC selection
+- same-location quest completion now works immediately after the threat is defeated
+- NPCs no longer automatically offer or complete quests merely because the player entered a location
+- new characters start with zero faction reputation while persistent faction memories remain
+- quest completion grants +5 faction reputation and the associated faction reward contributes another +5 while held
+- inherited reward items restore their +5 faction contribution when the new character recovers them from a previous life
+
 ## Phase 5: Data loading and mod foundation
 
 Goal: let content grow without turning code into a mess.

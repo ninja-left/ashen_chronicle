@@ -12,6 +12,7 @@ enum GameAction {
     Travel,
     ConfrontThreat,
     SearchRemains,
+    Talk,
     Meditate,
     QuestLog,
     Inventory,
@@ -40,7 +41,7 @@ pub fn run() -> std::io::Result<()> {
 }
 
 fn start_or_load(save_path: &PathBuf) -> std::io::Result<GameState> {
-    println!("The Ashen Chronicle v0.8.1");
+    println!("The Ashen Chronicle v0.8.2");
     println!("--------------------------------");
     if save_path.exists() {
         let choice = prompt("Load existing save? [y/N] ")?;
@@ -331,6 +332,7 @@ fn main_loop(state: &mut GameState, save_path: &PathBuf) -> std::io::Result<()> 
                 GameAction::Travel => travel(state)?,
                 GameAction::ConfrontThreat => confront_threat(state)?,
                 GameAction::SearchRemains => search_remains(state)?,
+                GameAction::Talk => talk(state)?,
                 GameAction::Meditate => meditate_and_save(state, save_path)?,
                 GameAction::QuestLog => review_quests(state),
                 GameAction::Inventory => show_inventory(state),
@@ -351,6 +353,7 @@ fn main_loop(state: &mut GameState, save_path: &PathBuf) -> std::io::Result<()> 
 fn build_main_menu(state: &GameState) -> Vec<MenuEntry> {
     let mut menu = vec![
         MenuEntry { label: "Travel".to_string(), action: GameAction::Travel },
+        MenuEntry { label: "Talk".to_string(), action: GameAction::Talk },
         MenuEntry { label: "Meditate".to_string(), action: GameAction::Meditate },
         MenuEntry { label: "Quest log".to_string(), action: GameAction::QuestLog },
         MenuEntry { label: "View inventory".to_string(), action: GameAction::Inventory },
@@ -468,63 +471,173 @@ fn location_atmosphere(state: &GameState, location_id: EntityId) -> Vec<String> 
 
 fn location_scene_for_npc(state: &mut GameState, npc_id: EntityId, location_id: EntityId) -> Vec<String> {
     let mut lines = Vec::new();
-    let npc_index = match npc_index_by_id(state, npc_id) {
-        Some(index) => index,
-        None => return lines,
-    };
-
+    let Some(npc_index) = npc_index_by_id(state, npc_id) else { return lines; };
     let npc_name = state.npcs[npc_index].display_name();
-    let current_character_name = state.character.display_name();
-
-    let quest_indices: Vec<usize> = state.quests.iter().enumerate().filter(|(_, quest)| quest.giver_npc_id == npc_id).map(|(index, _)| index).collect();
-    for quest_index in quest_indices {
-        let (offered, completed, required_item_name, title, description, quest_faction_id, completed_by) = {
-            let quest = &state.quests[quest_index];
-            (quest.offered, quest.completed, quest.required_item_name.clone(), quest.title.clone(), quest.description.clone(), quest.faction_id, quest.completed_by.clone())
-        };
-        if state.world.completed_quest_titles.iter().any(|known| known == &title) {
-            continue;
-        }
-        let has_required_item = state.character.inventory.iter().any(|item| item.name == required_item_name);
-        if !offered {
-            if let Some(quest) = state.quests.get_mut(quest_index) { quest.offered = true; }
-            lines.push(format!("{} says: '{}'", npc_name, description));
-            remember_npc(state, npc_id, format!("offered the quest {}", title));
-            remember_faction(state, quest_faction_id, format!("{} offered the quest {}.", npc_name, title));
-        } else if !completed && has_required_item {
-            if let Some(quest) = state.quests.get_mut(quest_index) {
-                quest.completed = true;
-                quest.reward_claimed = true;
-                quest.completed_by = Some(current_character_name.clone());
-            }
-            if !state.world.completed_quest_titles.iter().any(|known| known == &title) {
-                state.world.completed_quest_titles.push(title.clone());
-            }
-            if let Some(item_index) = state.character.inventory.iter().position(|item| item.name == required_item_name) {
-                state.character.inventory.remove(item_index);
-            }
-            adjust_faction_reputation(state, quest_faction_id, 10, &format!("{} completed {}.", current_character_name, title));
-            let reward_name = match title.as_str() {
-                "Quiet the Old Shrine" => "Wardens' Seal",
-                "Roots for the Market" => "Rootworker's Token",
-                _ => "Bell Covenant Charm",
-            };
-            let reward = Item { id: state.world.allocate_id(), name: reward_name.to_string(), description: format!("A token earned by completing {}.", title) };
-            state.character.inventory.push(reward.clone());
-            notify_item_gain(&reward);
-            state.world.record_history(state.character.turn, format!("{} completed {}.", current_character_name, title));
-            lines.push(format!("{} accepts the proof and marks the deed in their memory.", npc_name));
-        } else if completed {
-            let pronoun = if completed_by.as_deref() == Some(current_character_name.as_str()) { "You have done this before." } else { "Another life carried this deed into history." };
-            lines.push(format!("{} says: '{}'", npc_name, pronoun));
-        }
-    }
 
     if state.threat.active && state.threat.source_location_id == Some(location_id) {
         lines.push(format!("{} glances at the threat and lowers their voice.", npc_name));
     }
 
     lines
+}
+
+fn talk(state: &mut GameState) -> std::io::Result<()> {
+    let location_id = state.character.location_id;
+    let npc_ids = npc_ids_at_location(state, location_id);
+    if npc_ids.is_empty() {
+        println!("There is no one here to talk to.");
+        pause();
+        return Ok(());
+    }
+
+    let options: Vec<String> = npc_ids
+        .iter()
+        .filter_map(|id| npc_index_by_id(state, *id).map(|index| state.npcs[index].display_name()))
+        .collect();
+    if let Some(choice) = choose_from_list("Talk to whom?", &options, Some("Back"))? {
+        talk_to_npc(state, npc_ids[choice])?;
+    }
+    Ok(())
+}
+
+fn talk_to_npc(state: &mut GameState, npc_id: EntityId) -> std::io::Result<()> {
+    let Some(npc_index) = npc_index_by_id(state, npc_id) else { return Ok(()); };
+    let npc_name = state.npcs[npc_index].display_name();
+    let quest_indices: Vec<usize> = state
+        .quests
+        .iter()
+        .enumerate()
+        .filter(|(_, quest)| quest.giver_npc_id == npc_id)
+        .map(|(index, _)| index)
+        .collect();
+
+    if quest_indices.is_empty() {
+        println!("{} has little to say.", npc_name);
+        pause();
+        return Ok(());
+    }
+
+    let options = vec![
+        "Ask if they need help".to_string(),
+        "Tell them it's done".to_string(),
+    ];
+    if let Some(choice) = choose_from_list(&format!("Talk to {}", npc_name), &options, Some("Back"))? {
+        match choice {
+            0 => {
+                let mut found_offer = false;
+                for quest_index in quest_indices {
+                    let (title, description, faction_id, offered, completed) = {
+                        let quest = &state.quests[quest_index];
+                        (quest.title.clone(), quest.description.clone(), quest.faction_id, quest.offered, quest.completed)
+                    };
+                    if state.world.completed_quest_titles.iter().any(|known| known == &title) {
+                        continue;
+                    }
+                    if completed {
+                        continue;
+                    }
+                    found_offer = true;
+                    if offered {
+                        println!("{} says: 'You already agreed to help with {}.'", npc_name, title);
+                    } else {
+                        if let Some(quest) = state.quests.get_mut(quest_index) {
+                            quest.offered = true;
+                        }
+                        println!("{} says: '{}'", npc_name, description);
+                        remember_npc(state, npc_id, format!("offered the quest {}", title));
+                        remember_faction(state, faction_id, format!("{} offered the quest {}.", npc_name, title));
+                    }
+                }
+                if !found_offer {
+                    println!("{} has no work for you. Whatever was asked here has already been done.", npc_name);
+                }
+                pause();
+            }
+            1 => {
+                let mut handled = false;
+                for quest_index in quest_indices {
+                    let (title, offered, completed, required_item_name) = {
+                        let quest = &state.quests[quest_index];
+                        (quest.title.clone(), quest.offered, quest.completed, quest.required_item_name.clone())
+                    };
+                    if state.world.completed_quest_titles.iter().any(|known| known == &title) || completed {
+                        continue;
+                    }
+                    if !offered {
+                        println!("{} does not know what you are talking about. You have not accepted any work from them.", npc_name);
+                        handled = true;
+                        continue;
+                    }
+                    handled = true;
+                    if state.character.inventory.iter().any(|item| item.name == required_item_name) {
+                        complete_quest(state, quest_index);
+                    } else {
+                        println!("{} looks at you expectantly. You have not brought the required proof.", npc_name);
+                    }
+                }
+                if !handled {
+                    println!("{} has no unfinished deed to hear about.", npc_name);
+                }
+                pause();
+            }
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
+fn complete_quest(state: &mut GameState, quest_index: usize) -> bool {
+    let (title, required_item_name, faction_id) = {
+        let quest = &state.quests[quest_index];
+        (quest.title.clone(), quest.required_item_name.clone(), quest.faction_id)
+    };
+    if state.world.completed_quest_titles.iter().any(|known| known == &title) {
+        return false;
+    }
+
+    let Some(item_index) = state.character.inventory.iter().position(|item| item.name == required_item_name) else {
+        return false;
+    };
+    state.character.inventory.remove(item_index);
+
+    let current_character_name = state.character.display_name();
+    if let Some(quest) = state.quests.get_mut(quest_index) {
+        quest.completed = true;
+        quest.reward_claimed = true;
+        quest.completed_by = Some(current_character_name.clone());
+    }
+    state.world.completed_quest_titles.push(title.clone());
+
+    // Reputation is split between doing the deed and carrying the faction's reward.
+    adjust_faction_reputation(state, faction_id, 5, &format!("{} completed {}.", current_character_name, title));
+
+    let reward_name = match title.as_str() {
+        "Quiet the Old Shrine" => "Wardens' Seal",
+        "Roots for the Market" => "Rootworker's Token",
+        _ => "Bell Covenant Charm",
+    };
+    let reward = Item {
+        id: state.world.allocate_id(),
+        name: reward_name.to_string(),
+        description: format!("A token earned by completing {}.", title),
+    };
+    state.character.inventory.push(reward.clone());
+    notify_item_gain(&reward);
+    grant_reward_reputation(state, &reward);
+    state.world.record_history(state.character.turn, format!("{} completed {}.", current_character_name, title));
+    println!("The deed is recorded, and the quest item is no longer needed.");
+    true
+}
+
+fn grant_reward_reputation(state: &mut GameState, item: &Item) {
+    let Some(faction_name) = (match item.name.as_str() {
+        "Wardens' Seal" => Some("Cinder Wardens"),
+        "Rootworker's Token" => Some("Hollow Market Kin"),
+        "Bell Covenant Charm" => Some("Drowned Bell Covenant"),
+        _ => None,
+    }) else { return; };
+    let Some(faction_id) = faction_id_by_name(state, faction_name) else { return; };
+    adjust_faction_reputation(state, faction_id, 5, &format!("Carrying {} marks affiliation with the faction.", item.name));
 }
 
 fn remember_npc(state: &mut GameState, npc_id: EntityId, memory: String) {
@@ -857,6 +970,7 @@ fn search_remains(state: &mut GameState) -> std::io::Result<()> {
 
         for item in items {
             notify_item_gain(&item);
+            grant_reward_reputation(state, &item);
             state.character.inventory.push(item);
         }
 
