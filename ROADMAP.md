@@ -403,3 +403,12 @@ Completed:
 - made prompt overlays use more of the available screen space on compact terminals
 - added scrolling window behavior for menu overlays so longer option lists stay readable on smaller screens
 - bumped the project version to 0.17.1
+
+## v0.17.2 Monochrome prompt cleanup
+
+Completed:
+- switched the UI styling to monochrome gray/white borders and highlights
+- moved the pause prompt out of the center overlay so result text stays visible
+- reduced the choice popup footprint so it does not bury the rest of the screen as aggressively
+- bumped the project version to 0.17.2
+

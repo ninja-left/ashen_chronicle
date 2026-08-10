@@ -65,7 +65,7 @@ fn is_compact_area(area: Rect) -> bool {
 }
 
 fn prompt_popup_rect(area: Rect, compact: bool) -> Rect {
-    let (width, height) = if compact { (94, 84) } else { (78, 60) };
+    let (width, height) = if compact { (82, 58) } else { (70, 48) };
     centered_rect(width, height, area)
 }
 
@@ -79,7 +79,7 @@ pub fn init() -> io::Result<UiGuard> {
     let mut state = runtime().lock().unwrap();
     state.initialized = true;
     state.terminal = Some(terminal);
-    render_locked(&mut state, None)?;
+    render_locked(&mut state, None, None)?;
     Ok(UiGuard)
 }
 
@@ -87,7 +87,7 @@ pub fn set_dashboard(dashboard: Dashboard) {
     let mut state = runtime().lock().unwrap();
     state.dashboard = dashboard;
     state.initialized = true;
-    let _ = render_locked(&mut state, None);
+    let _ = render_locked(&mut state, None, None);
 }
 
 pub fn line(text: &str) {
@@ -97,7 +97,7 @@ pub fn line(text: &str) {
     }
     trim_log(&mut state.log);
     if state.initialized {
-        let _ = render_locked(&mut state, None);
+        let _ = render_locked(&mut state, None, None);
     } else {
         println!("{text}");
     }
@@ -126,7 +126,7 @@ pub fn prompt(message: &str) -> io::Result<String> {
             format!("> {buffer}"),
             "Enter to confirm, Esc to cancel.".to_string(),
         ];
-        let _ = render_locked(&mut state, Some(&prompt_lines));
+        let _ = render_locked(&mut state, Some(&prompt_lines), None);
         drop(state);
 
         match read_key()? {
@@ -218,7 +218,7 @@ pub fn choose_from_list(
             prompt_lines.push("⋯ more below ⋯".to_string());
         }
 
-        let _ = render_locked(&mut state, Some(&prompt_lines));
+        let _ = render_locked(&mut state, Some(&prompt_lines), None);
         drop(state);
 
         match read_key()? {
@@ -309,12 +309,7 @@ fn wait_for_key(message: &str) -> io::Result<()> {
     }
 
     let mut state = runtime().lock().unwrap();
-    let prompt_lines = vec![
-        message.to_string(),
-        String::new(),
-        "Press any key to continue.".to_string(),
-    ];
-    let _ = render_locked(&mut state, Some(&prompt_lines));
+    let _ = render_locked(&mut state, None, Some(message));
     drop(state);
 
     loop {
@@ -362,7 +357,7 @@ fn trim_log(log: &mut Vec<String>) {
     }
 }
 
-fn render_locked(state: &mut UiRuntime, prompt: Option<&[String]>) -> io::Result<()> {
+fn render_locked(state: &mut UiRuntime, prompt: Option<&[String]>, notice: Option<&str>) -> io::Result<()> {
     let dashboard = state.dashboard.clone();
     let log = state.log.clone();
     let Some(terminal) = state.terminal.as_mut() else {
@@ -372,7 +367,7 @@ fn render_locked(state: &mut UiRuntime, prompt: Option<&[String]>) -> io::Result
     terminal.draw(|frame| {
         let area = frame.area();
         frame.render_widget(Clear, area);
-        draw_dashboard(frame, area, &dashboard, &log, prompt);
+        draw_dashboard(frame, area, &dashboard, &log, prompt, notice);
     })?;
     Ok(())
 }
@@ -383,6 +378,7 @@ fn draw_dashboard(
     dashboard: &Dashboard,
     log: &[String],
     prompt: Option<&[String]>,
+    notice: Option<&str>,
 ) {
     let compact = is_compact_area(area);
     let root = Layout::default()
@@ -429,7 +425,7 @@ fn draw_dashboard(
         render_log(frame, right[1], log, compact);
     }
 
-    render_footer(frame, root[2], dashboard, compact);
+    render_footer(frame, root[2], dashboard, compact, notice);
 
     if let Some(prompt_lines) = prompt {
         render_prompt(frame, area, prompt_lines, compact);
@@ -485,14 +481,20 @@ fn render_log(frame: &mut ratatui::Frame<'_>, area: Rect, log: &[String], compac
     frame.render_widget(paragraph, area);
 }
 
-fn render_footer(frame: &mut ratatui::Frame<'_>, area: Rect, dashboard: &Dashboard, compact: bool) {
-    let hint = dashboard
-        .action_hint
-        .clone()
-        .unwrap_or_else(|| "Use arrows, Enter, and Esc.".to_string());
-    let paragraph = Paragraph::new(hint)
-        .block(Block::default().borders(Borders::ALL).title("Controls").style(border_style(compact)))
-        .wrap(Wrap { trim: true });
+fn render_footer(frame: &mut ratatui::Frame<'_>, area: Rect, dashboard: &Dashboard, compact: bool, notice: Option<&str>) {
+    let paragraph = if let Some(notice) = notice {
+        Paragraph::new(notice.to_string())
+            .block(Block::default().borders(Borders::ALL).title("Prompt").style(border_style(compact)))
+            .wrap(Wrap { trim: true })
+    } else {
+        let hint = dashboard
+            .action_hint
+            .clone()
+            .unwrap_or_else(|| "Use arrows, Enter, and Esc.".to_string());
+        Paragraph::new(hint)
+            .block(Block::default().borders(Borders::ALL).title("Controls").style(border_style(compact)))
+            .wrap(Wrap { trim: true })
+    };
     frame.render_widget(paragraph, area);
 }
 
@@ -556,9 +558,9 @@ fn location_lines(dashboard: &Dashboard) -> Vec<String> {
 
 fn border_style(compact: bool) -> Style {
     if compact {
-        Style::default().fg(Color::Yellow)
+        Style::default().fg(Color::Gray)
     } else {
-        Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)
+        Style::default().fg(Color::White).add_modifier(Modifier::BOLD)
     }
 }
 
