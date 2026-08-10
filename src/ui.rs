@@ -3,7 +3,8 @@ use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers};
 use crossterm::execute;
 use crossterm::terminal::{self, EnterAlternateScreen, LeaveAlternateScreen};
 use ratatui::backend::CrosstermBackend;
-use ratatui::layout::{Constraint, Direction, Layout, Rect};
+use ratatui::layout::{Constraint, Direction, Layout, Rect, Spacing};
+use ratatui::symbols::merge::MergeStrategy;
 use ratatui::prelude::{Color, Modifier, Style};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph, Wrap};
 use ratatui::Terminal;
@@ -128,7 +129,9 @@ pub fn diagnostic(text: &str) {
 
 pub fn prompt(message: &str) -> io::Result<String> {
     if !runtime().lock().unwrap().initialized {
-        println!("{message}");
+        if !message.is_empty() {
+            println!("{message}");
+        };
         print!("> ");
         io::stdout().flush()?;
         let mut input = String::new();
@@ -419,8 +422,11 @@ fn draw_dashboard(
     let root = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Min(8), Constraint::Length(bottom_height)])
+        .spacing(Spacing::Overlap(1))
         .split(area);
 
+    let head_title = format!("The Ashen Chronicle v{}", env!("CARGO_PKG_VERSION"));
+    let head_title: &str = head_title.as_str();
     if compact {
         let body = Layout::default()
             .direction(Direction::Vertical)
@@ -429,20 +435,23 @@ fn draw_dashboard(
                 Constraint::Percentage(40),
                 Constraint::Percentage(28),
             ])
+            .spacing(Spacing::Overlap(1))
             .split(root[0]);
-        render_panel(frame, body[0], "Status", status_lines(dashboard), compact);
+        render_panel(frame, body[0], head_title, status_lines(dashboard), compact);
         render_panel(frame, body[1], "Location", location_lines(dashboard, scene), compact);
         render_log(frame, body[2], log, compact);
     } else {
         let body = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([Constraint::Percentage(34), Constraint::Percentage(66)])
+            .spacing(Spacing::Overlap(1))
             .split(root[0]);
         let left = Layout::default()
             .direction(Direction::Vertical)
             .constraints([Constraint::Length(9), Constraint::Min(4)])
+            .spacing(Spacing::Overlap(1))
             .split(body[0]);
-        render_panel(frame, left[0], "Status", status_lines(dashboard), compact);
+        render_panel(frame, left[0], head_title, status_lines(dashboard), compact);
         render_panel(
             frame,
             left[1],
@@ -453,6 +462,7 @@ fn draw_dashboard(
         let right = Layout::default()
             .direction(Direction::Vertical)
             .constraints([Constraint::Length(16), Constraint::Min(4)])
+            .spacing(Spacing::Overlap(1))
             .split(body[1]);
         render_panel(frame, right[0], "Location", location_lines(dashboard, scene), compact);
         render_log(frame, right[1], log, compact);
@@ -465,39 +475,26 @@ fn draw_dashboard(
     }
 }
 
-fn render_header(frame: &mut ratatui::Frame<'_>, area: Rect, _dashboard: &Dashboard, compact: bool) {
-    let paragraph = Paragraph::new("")
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title("The Ashen Chronicle")
-                .style(border_style(compact)),
-        )
-        .wrap(Wrap { trim: true });
-    frame.render_widget(paragraph, area);
-}
-
 fn render_panel(frame: &mut ratatui::Frame<'_>, area: Rect, title: &str, lines: Vec<String>, compact: bool) {
-    let content = if lines.is_empty() {
-        vec!["None.".to_string()]
-    } else {
-        lines
-    };
-    let paragraph = Paragraph::new(content.join("\n"))
-        .block(Block::default().borders(Borders::ALL).title(title).style(border_style(compact)))
-        .wrap(Wrap { trim: true });
-    frame.render_widget(paragraph, area);
+    if !lines.is_empty() {
+        // Don't create any lines if there's nothing to show
+        let content = lines;
+        let paragraph = Paragraph::new(content.join("\n"))
+            .block(Block::default().borders(Borders::ALL).title(title).style(border_style(compact)).merge_borders(MergeStrategy::Exact))
+            .wrap(Wrap { trim: true });
+        frame.render_widget(paragraph, area);
+    }
 }
 
 fn render_log(frame: &mut ratatui::Frame<'_>, area: Rect, log: &[String], compact: bool) {
     let visible_lines = area.height.saturating_sub(2) as usize;
     let content = if log.is_empty() {
-        vec!["No recent result.".to_string()]
+        vec!["No journal yet.".to_string()]
     } else {
         tail_lines(log, visible_lines.max(1))
     };
     let paragraph = Paragraph::new(content.join("\n"))
-        .block(Block::default().borders(Borders::ALL).title("Result").style(border_style(compact)))
+        .block(Block::default().borders(Borders::ALL).title("Journal").style(border_style(compact)).merge_borders(MergeStrategy::Exact))
         .wrap(Wrap { trim: true });
     frame.render_widget(paragraph, area);
 }
@@ -505,7 +502,7 @@ fn render_log(frame: &mut ratatui::Frame<'_>, area: Rect, log: &[String], compac
 fn render_footer(frame: &mut ratatui::Frame<'_>, area: Rect, dashboard: &Dashboard, compact: bool, notice: Option<&str>) {
     let paragraph = if let Some(notice) = notice {
         Paragraph::new(notice.to_string())
-            .block(Block::default().borders(Borders::ALL).title("Prompt").style(border_style(compact)))
+            .block(Block::default().borders(Borders::ALL).title("Actions").style(border_style(compact)).merge_borders(MergeStrategy::Exact))
             .wrap(Wrap { trim: true })
     } else {
         let hint = dashboard
@@ -513,7 +510,7 @@ fn render_footer(frame: &mut ratatui::Frame<'_>, area: Rect, dashboard: &Dashboa
             .clone()
             .unwrap_or_else(|| "Use arrows, Enter, and Esc.".to_string());
         Paragraph::new(hint)
-            .block(Block::default().borders(Borders::ALL).title("Controls").style(border_style(compact)))
+            .block(Block::default().borders(Borders::ALL).title("Controls").style(border_style(compact)).merge_borders(MergeStrategy::Exact))
             .wrap(Wrap { trim: true })
     };
     frame.render_widget(paragraph, area);
@@ -521,7 +518,7 @@ fn render_footer(frame: &mut ratatui::Frame<'_>, area: Rect, dashboard: &Dashboa
 
 fn render_prompt_panel(frame: &mut ratatui::Frame<'_>, area: Rect, prompt_lines: &[String], compact: bool) {
     let paragraph = Paragraph::new(prompt_lines.join("\n"))
-        .block(Block::default().borders(Borders::ALL).title("Prompt").style(border_style(compact)))
+        .block(Block::default().borders(Borders::ALL).title("Actions").style(border_style(compact)).merge_borders(MergeStrategy::Exact))
         .wrap(Wrap { trim: true });
     frame.render_widget(paragraph, area);
 }

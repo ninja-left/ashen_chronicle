@@ -63,8 +63,6 @@ pub fn run() -> std::io::Result<()> {
 }
 
 fn start_or_load(save_path: &PathBuf) -> std::io::Result<GameState> {
-    println!("The Ashen Chronicle v{}", env!("CARGO_PKG_VERSION"));
-    println!("--------------------------------");
     if save_path.exists() {
         let choice = prompt("Load existing save? [y/N] ")?;
         if choice.eq_ignore_ascii_case("y") {
@@ -495,9 +493,9 @@ fn render_state(state: &GameState) {
         hp_line: format!("HP: {}/{}", character.hp, character.max_hp),
         time_display: time_display(world.time_points, world.day),
         condition_line,
-        location_name: location.map(|location| format!("Location: {}", location.name)),
+        location_name: location.map(|location| format!("~ {} ~", location.name)),
         location_description: location.map(|location| location.description.clone()),
-        danger_line: location.and_then(|location| if location.dangerous { Some("Danger: unsafe".to_string()) } else { None }),
+        danger_line: location.and_then(|location| if location.dangerous { Some("You feel the danger.".to_string()) } else { None }),
         threat_line,
         action_hint: Some("Arrows / Enter / Esc".to_string()),
     };
@@ -919,8 +917,7 @@ fn character_sheet(state: &GameState) {
     println!("Level {}  XP {}/{}", state.character.level, state.character.experience, state.character.level * 50);
     println!("Might: {}  Insight: {}  Endurance: {}", state.character.attributes.might, state.character.attributes.insight, state.character.attributes.endurance);
     println!("Effective might: {}  Effective insight: {}", state.character.effective_might(), state.character.effective_insight());
-    if state.character.conditions.is_empty() { println!("Conditions: none"); }
-    else { println!("Conditions: {}", state.character.conditions.iter().map(|c| format!("{} ({} portions)", c.name, c.remaining)).collect::<Vec<_>>().join(", ")); }
+    if !state.character.conditions.is_empty() { println!("Conditions: {}", state.character.conditions.iter().map(|c| format!("{} ({} portions)", c.name, c.remaining)).collect::<Vec<_>>().join(", ")); }
     if state.factions.is_empty() {
         println!("Faction reputation: none");
     } else {
@@ -1052,7 +1049,7 @@ fn meditate_and_save(state: &mut GameState, save_path: &PathBuf) -> std::io::Res
     state.world.record_history(state.character.turn, format!("{} meditated for {} time portions and recovered.", character_name, portions));
     save_game(save_path, state)?;
     narrate(&format!(
-        "You meditate until your breathing steadies. Time passes: {}. You recover {} HP and save the game.",
+        "You meditate until your breathing steadies. You look at the sky...\n{}\nYou recover {} HP and save the game.",
         time_display(state.world.time_points, state.world.day), healing
     ));
     Ok(())
