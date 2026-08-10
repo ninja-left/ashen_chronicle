@@ -60,6 +60,15 @@ fn runtime() -> &'static Mutex<UiRuntime> {
     UI.get_or_init(|| Mutex::new(UiRuntime::default()))
 }
 
+fn is_compact_area(area: Rect) -> bool {
+    area.width <= 112 || area.height <= 36 || area.width <= area.height.saturating_mul(2)
+}
+
+fn prompt_popup_rect(area: Rect, compact: bool) -> Rect {
+    let (width, height) = if compact { (94, 84) } else { (78, 60) };
+    centered_rect(width, height, area)
+}
+
 pub fn init() -> io::Result<UiGuard> {
     enter_terminal()?;
     let stdout = io::stdout();
@@ -170,19 +179,43 @@ pub fn choose_from_list(
     let mut state = runtime().lock().unwrap();
 
     loop {
+        let (term_width, term_height) = terminal::size().unwrap_or((100, 40));
+        let compact = term_width <= 112 || term_height <= 36 || term_width <= term_height.saturating_mul(2);
+        let popup_height = if compact { 84 } else { 60 };
+        let inner_height = ((term_height as u32 * popup_height as u32) / 100) as usize;
+        let mut available_option_rows = inner_height.saturating_sub(6);
+        if zero_label.is_some() {
+            available_option_rows = available_option_rows.saturating_sub(1);
+        }
+        let visible_rows = available_option_rows.max(1);
+        let total_rows = options.len() + usize::from(zero_label.is_some());
+        let mut start_index = selected.saturating_sub(visible_rows / 2);
+        let max_start = total_rows.saturating_sub(visible_rows);
+        if start_index > max_start {
+            start_index = max_start;
+        }
+        let end_index = (start_index + visible_rows).min(total_rows);
+
         let mut prompt_lines = vec![
             title.to_string(),
             String::new(),
             "Use ↑ ↓ or j/k, Enter to confirm, Esc to go back.".to_string(),
             String::new(),
         ];
-        for (index, option) in options.iter().enumerate() {
-            let marker = if index == selected { '▶' } else { ' ' };
-            prompt_lines.push(format!("{marker} {}. {option}", index + 1));
+        if start_index > 0 {
+            prompt_lines.push("⋯ more above ⋯".to_string());
         }
-        if let Some(label) = zero_label {
-            let marker = if selected == back_index { '▶' } else { ' ' };
-            prompt_lines.push(format!("{marker} 0. {label}"));
+        for row in start_index..end_index {
+            if row < options.len() {
+                let marker = if row == selected { '▶' } else { ' ' };
+                prompt_lines.push(format!("{marker} {}. {}", row + 1, options[row]));
+            } else if zero_label.is_some() {
+                let marker = if row == selected { '▶' } else { ' ' };
+                prompt_lines.push(format!("{marker} 0. {}", zero_label.unwrap()));
+            }
+        }
+        if end_index < total_rows {
+            prompt_lines.push("⋯ more below ⋯".to_string());
         }
 
         let _ = render_locked(&mut state, Some(&prompt_lines));
@@ -351,7 +384,7 @@ fn draw_dashboard(
     log: &[String],
     prompt: Option<&[String]>,
 ) {
-    let compact = area.width < 100 || area.height < 32;
+    let compact = is_compact_area(area);
     let root = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Length(5), Constraint::Min(8), Constraint::Length(3)])
@@ -464,7 +497,7 @@ fn render_footer(frame: &mut ratatui::Frame<'_>, area: Rect, dashboard: &Dashboa
 }
 
 fn render_prompt(frame: &mut ratatui::Frame<'_>, area: Rect, prompt_lines: &[String], compact: bool) {
-    let popup = centered_rect(72, if compact { 62 } else { 52 }, area);
+    let popup = prompt_popup_rect(area, compact);
     frame.render_widget(Clear, popup);
     let paragraph = Paragraph::new(prompt_lines.join("\n"))
         .block(Block::default().borders(Borders::ALL).title("Prompt").style(border_style(compact)))

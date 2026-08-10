@@ -395,3 +395,11 @@ Completed:
 - kept the existing gameplay flows working inside the new screen shell
 - bumped the project version to 0.17.0
 
+
+## v0.17.1 Mobile portrait UI cleanup
+
+Completed:
+- expanded compact-mode detection so tall, narrow terminals no longer get forced into the desktop split layout
+- made prompt overlays use more of the available screen space on compact terminals
+- added scrolling window behavior for menu overlays so longer option lists stay readable on smaller screens
+- bumped the project version to 0.17.1
