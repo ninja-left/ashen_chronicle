@@ -4,7 +4,7 @@ use crate::model::{
     Condition, Quest, WorldMode,
 };
 use crate::persistence::{load_game, save_game};
-use crate::ui::{choose_from_list, narrate, pause, prompt, Dashboard};
+use crate::ui::{choose_from_list, clear_log, narrate, pause, prompt, Dashboard};
 use std::mem;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -340,6 +340,7 @@ fn main_loop(state: &mut GameState, save_path: &PathBuf) -> std::io::Result<()> 
         let menu = build_main_menu(state);
         let labels: Vec<String> = menu.iter().map(|entry| entry.label.clone()).collect();
         if let Some(choice) = choose_from_list("Choose an action", &labels, None)? {
+            clear_log();
             match menu[choice].action {
                 GameAction::Travel => travel(state)?,
                 GameAction::InvestigateThreat => investigate_threat(state)?,

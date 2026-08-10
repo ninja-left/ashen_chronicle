@@ -419,3 +419,12 @@ Completed:
 - tightened the prompt layout so messages and results stay readable behind the prompt flow
 - bumped the project version to 0.17.3
 
+
+## v0.17.4 Turn-based result cleanup
+
+Completed:
+- removed the duplicate top-of-screen game-state summary so the header no longer repeats the Status panel
+- changed the Messages panel into a short-lived Result panel that is cleared when the player starts a new choice
+- kept action outcomes visible only for the current turn instead of letting old text pile up indefinitely
+- tightened the header layout to give landscape screens more usable space
+- bumped the project version to 0.17.4

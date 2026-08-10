@@ -109,6 +109,14 @@ pub fn line(text: &str) {
     }
 }
 
+pub fn clear_log() {
+    let mut state = runtime().lock().unwrap();
+    state.log.clear();
+    if state.initialized {
+        let _ = render_locked(&mut state, None, None);
+    }
+}
+
 pub fn diagnostic(text: &str) {
     line(&format!("[diagnostic] {text}"));
 }
@@ -257,24 +265,29 @@ pub fn choose_from_list(
                 };
             }
             KeyCode::Enter => {
-                return Ok(if selected == back_index && zero_label.is_some() {
+                let choice = if selected == back_index && zero_label.is_some() {
                     None
                 } else {
                     Some(selected)
-                });
+                };
+                clear_log();
+                return Ok(choice);
             }
             KeyCode::Esc => {
                 if zero_label.is_some() {
+                    clear_log();
                     return Ok(None);
                 }
             }
             KeyCode::Char(c) if c.is_ascii_digit() => {
                 if c == '0' && zero_label.is_some() {
+                    clear_log();
                     return Ok(None);
                 }
                 if let Some(digit) = c.to_digit(10) {
                     let choice = digit as usize;
                     if choice >= 1 && choice <= options.len() {
+                        clear_log();
                         return Ok(Some(choice - 1));
                     }
                 }
@@ -398,7 +411,7 @@ fn draw_dashboard(
     };
     let root = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Length(5), Constraint::Min(8), Constraint::Length(bottom_height)])
+        .constraints([Constraint::Length(3), Constraint::Min(8), Constraint::Length(bottom_height)])
         .split(area);
 
     render_header(frame, root[0], dashboard, compact);
@@ -447,21 +460,8 @@ fn draw_dashboard(
     }
 }
 
-fn render_header(frame: &mut ratatui::Frame<'_>, area: Rect, dashboard: &Dashboard, compact: bool) {
-    let mut lines = Vec::new();
-    if !dashboard.world_name.is_empty() {
-        lines.push(format!("World: {}", dashboard.world_name));
-    }
-    if !dashboard.character_line.is_empty() {
-        lines.push(dashboard.character_line.clone());
-    }
-    if !dashboard.hp_line.is_empty() {
-        lines.push(dashboard.hp_line.clone());
-    }
-    if !dashboard.time_display.is_empty() {
-        lines.push(dashboard.time_display.clone());
-    }
-    let paragraph = Paragraph::new(lines.join("\n"))
+fn render_header(frame: &mut ratatui::Frame<'_>, area: Rect, _dashboard: &Dashboard, compact: bool) {
+    let paragraph = Paragraph::new("")
         .block(
             Block::default()
                 .borders(Borders::ALL)
@@ -485,13 +485,14 @@ fn render_panel(frame: &mut ratatui::Frame<'_>, area: Rect, title: &str, lines: 
 }
 
 fn render_log(frame: &mut ratatui::Frame<'_>, area: Rect, log: &[String], compact: bool) {
+    let visible_lines = area.height.saturating_sub(2) as usize;
     let content = if log.is_empty() {
-        vec!["No recent messages.".to_string()]
+        vec!["No recent result.".to_string()]
     } else {
-        log.to_vec()
+        tail_lines(log, visible_lines.max(1))
     };
     let paragraph = Paragraph::new(content.join("\n"))
-        .block(Block::default().borders(Borders::ALL).title("Messages").style(border_style(compact)))
+        .block(Block::default().borders(Borders::ALL).title("Result").style(border_style(compact)))
         .wrap(Wrap { trim: true });
     frame.render_widget(paragraph, area);
 }
@@ -567,6 +568,13 @@ fn location_lines(dashboard: &Dashboard) -> Vec<String> {
         lines.push(line.clone());
     }
     lines
+}
+
+fn tail_lines(lines: &[String], max_lines: usize) -> Vec<String> {
+    if lines.len() <= max_lines {
+        return lines.to_vec();
+    }
+    lines[lines.len() - max_lines..].to_vec()
 }
 
 fn border_style(compact: bool) -> Style {
