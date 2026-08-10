@@ -4,7 +4,7 @@ use crate::model::{
     Condition, Quest, WorldMode,
 };
 use crate::persistence::{load_game, save_game};
-use crate::ui::{choose_from_list, clear_log, narrate, pause, prompt, Dashboard};
+use crate::ui::{choose_from_list, clear_log, narrate, pause, prompt, set_location_scene, Dashboard};
 use std::mem;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -432,7 +432,7 @@ fn quit_screen() -> std::io::Result<bool> {
     println!("{choices}");
 
     loop {
-        match prompt("> ")?.to_ascii_lowercase().as_str() {
+        match prompt("Leave the game? [y/N]")?.to_ascii_lowercase().as_str() {
             "y" | "yes" => return Ok(true),
             "n" | "no" | "" => return Ok(false),
             _ => println!("Choose Y to leave, or N to stay."),
@@ -489,60 +489,16 @@ fn render_state(state: &GameState) {
                 .join(", ")
         ))
     };
-    let people_line = location.map(|location| {
-        let people_here: Vec<String> = state
-            .npcs
-            .iter()
-            .filter(|npc| npc.location_id == location.id)
-            .map(|npc| npc.display_name())
-            .collect();
-        if people_here.is_empty() { String::new() } else { format!("People: {}", people_here.join(", ")) }
-    }).filter(|line| !line.is_empty());
-    let remains_line = location.map(|location| {
-        let remains = corpses_at_location(state, location.id);
-        if remains.is_empty() {
-            String::new()
-        } else {
-            let names: Vec<String> = remains.iter().map(|corpse| corpse_label(corpse)).collect();
-            format!("Remains: {}", names.join(", "))
-        }
-    }).filter(|line| !line.is_empty());
-    let exits_line = location.map(|location| {
-        let exits: Vec<String> = location
-            .exits
-            .iter()
-            .filter_map(|id| world.location_by_id(*id).map(|loc| loc.name.clone()))
-            .collect();
-        if exits.is_empty() { String::new() } else { format!("Exits: {}", exits.join(", ")) }
-    }).filter(|line| !line.is_empty());
     let threat_line = if state.threat.active { Some(format!("Threat: {}", state.threat.label)) } else { None };
-    let reputation_line = if state.factions.is_empty() {
-        None
-    } else {
-        Some(format!(
-            "Reputation: {}",
-            state
-                .factions
-                .iter()
-                .map(|faction| format!("{} {:+}", faction.name, faction.reputation))
-                .collect::<Vec<_>>()
-                .join(" | ")
-        ))
-    };
     let dashboard = Dashboard {
         world_name: world.name.clone(),
-        character_line: format!("Character: {}", character.display_name()),
         hp_line: format!("HP: {}/{}", character.hp, character.max_hp),
         time_display: time_display(world.time_points, world.day),
         condition_line,
         location_name: location.map(|location| format!("Location: {}", location.name)),
         location_description: location.map(|location| location.description.clone()),
         danger_line: location.and_then(|location| if location.dangerous { Some("Danger: unsafe".to_string()) } else { None }),
-        people_line,
-        remains_line,
-        exits_line,
         threat_line,
-        reputation_line,
         action_hint: Some("Arrows / Enter / Esc".to_string()),
     };
     crate::ui::set_dashboard(dashboard);
@@ -571,11 +527,7 @@ fn maybe_run_location_scene(state: &mut GameState) -> std::io::Result<()> {
         lines.extend(location_scene_for_npc(state, npc_id, location_id));
     }
 
-    if lines.is_empty() {
-        return Ok(());
-    }
-
-    narrate(&lines.join("\n"));
+    set_location_scene(lines);
     Ok(())
 }
 
@@ -969,6 +921,14 @@ fn character_sheet(state: &GameState) {
     println!("Effective might: {}  Effective insight: {}", state.character.effective_might(), state.character.effective_insight());
     if state.character.conditions.is_empty() { println!("Conditions: none"); }
     else { println!("Conditions: {}", state.character.conditions.iter().map(|c| format!("{} ({} portions)", c.name, c.remaining)).collect::<Vec<_>>().join(", ")); }
+    if state.factions.is_empty() {
+        println!("Faction reputation: none");
+    } else {
+        println!("Faction reputation:");
+        for faction in &state.factions {
+            println!("  - {} {:+}", faction.name, faction.reputation);
+        }
+    }
     pause();
 }
 

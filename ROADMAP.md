@@ -428,3 +428,15 @@ Completed:
 - kept action outcomes visible only for the current turn instead of letting old text pile up indefinitely
 - tightened the header layout to give landscape screens more usable space
 - bumped the project version to 0.17.4
+
+## v0.17.5 Main-screen cleanup
+
+Completed:
+- removed the empty top header box instead of leaving it as a hollow frame
+- removed debug-style location exits and people listings from the main dashboard
+- removed the character name and faction reputation from the main dashboard
+- moved faction reputation into the character sheet
+- moved location arrival art and atmosphere into the Location panel instead of the Result panel
+- fixed the quit confirmation prompt so it no longer prints a stray `>` on separate lines
+- bumped the project version to 0.17.5
+

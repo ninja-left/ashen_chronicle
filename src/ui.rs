@@ -13,23 +13,19 @@ use std::sync::{Mutex, OnceLock};
 #[derive(Clone, Default)]
 pub struct Dashboard {
     pub world_name: String,
-    pub character_line: String,
     pub hp_line: String,
     pub time_display: String,
     pub condition_line: Option<String>,
     pub location_name: Option<String>,
     pub location_description: Option<String>,
     pub danger_line: Option<String>,
-    pub people_line: Option<String>,
-    pub remains_line: Option<String>,
-    pub exits_line: Option<String>,
     pub threat_line: Option<String>,
-    pub reputation_line: Option<String>,
     pub action_hint: Option<String>,
 }
 
 struct UiRuntime {
     dashboard: Dashboard,
+    location_scene: Vec<String>,
     log: Vec<String>,
     initialized: bool,
     terminal: Option<Terminal<CrosstermBackend<Stdout>>>,
@@ -39,6 +35,7 @@ impl Default for UiRuntime {
     fn default() -> Self {
         Self {
             dashboard: Dashboard::default(),
+            location_scene: Vec::new(),
             log: Vec::new(),
             initialized: false,
             terminal: None,
@@ -94,6 +91,14 @@ pub fn set_dashboard(dashboard: Dashboard) {
     state.dashboard = dashboard;
     state.initialized = true;
     let _ = render_locked(&mut state, None, None);
+}
+
+pub fn set_location_scene(lines: Vec<String>) {
+    let mut state = runtime().lock().unwrap();
+    state.location_scene = lines;
+    if state.initialized {
+        let _ = render_locked(&mut state, None, None);
+    }
 }
 
 pub fn line(text: &str) {
@@ -369,7 +374,7 @@ fn restore_terminal() -> io::Result<()> {
 }
 
 fn trim_log(log: &mut Vec<String>) {
-    const MAX_LOG_LINES: usize = 80;
+    const MAX_LOG_LINES: usize = 48;
     if log.len() > MAX_LOG_LINES {
         let excess = log.len() - MAX_LOG_LINES;
         log.drain(0..excess);
@@ -378,6 +383,7 @@ fn trim_log(log: &mut Vec<String>) {
 
 fn render_locked(state: &mut UiRuntime, prompt: Option<&[String]>, notice: Option<&str>) -> io::Result<()> {
     let dashboard = state.dashboard.clone();
+    let scene = state.location_scene.clone();
     let log = state.log.clone();
     let Some(terminal) = state.terminal.as_mut() else {
         return Ok(());
@@ -386,7 +392,7 @@ fn render_locked(state: &mut UiRuntime, prompt: Option<&[String]>, notice: Optio
     terminal.draw(|frame| {
         let area = frame.area();
         frame.render_widget(Clear, area);
-        draw_dashboard(frame, area, &dashboard, &log, prompt, notice);
+        draw_dashboard(frame, area, &dashboard, &scene, &log, prompt, notice);
     })?;
     Ok(())
 }
@@ -395,6 +401,7 @@ fn draw_dashboard(
     frame: &mut ratatui::Frame<'_>,
     area: Rect,
     dashboard: &Dashboard,
+    scene: &[String],
     log: &[String],
     prompt: Option<&[String]>,
     notice: Option<&str>,
@@ -411,31 +418,29 @@ fn draw_dashboard(
     };
     let root = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Length(3), Constraint::Min(8), Constraint::Length(bottom_height)])
+        .constraints([Constraint::Min(8), Constraint::Length(bottom_height)])
         .split(area);
-
-    render_header(frame, root[0], dashboard, compact);
 
     if compact {
         let body = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
-                Constraint::Percentage(30),
-                Constraint::Percentage(34),
-                Constraint::Percentage(36),
+                Constraint::Percentage(32),
+                Constraint::Percentage(40),
+                Constraint::Percentage(28),
             ])
-            .split(root[1]);
+            .split(root[0]);
         render_panel(frame, body[0], "Status", status_lines(dashboard), compact);
-        render_panel(frame, body[1], "Location", location_lines(dashboard), compact);
+        render_panel(frame, body[1], "Location", location_lines(dashboard, scene), compact);
         render_log(frame, body[2], log, compact);
     } else {
         let body = Layout::default()
             .direction(Direction::Horizontal)
-            .constraints([Constraint::Percentage(38), Constraint::Percentage(62)])
-            .split(root[1]);
+            .constraints([Constraint::Percentage(34), Constraint::Percentage(66)])
+            .split(root[0]);
         let left = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([Constraint::Length(10), Constraint::Min(4)])
+            .constraints([Constraint::Length(9), Constraint::Min(4)])
             .split(body[0]);
         render_panel(frame, left[0], "Status", status_lines(dashboard), compact);
         render_panel(
@@ -447,16 +452,16 @@ fn draw_dashboard(
         );
         let right = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([Constraint::Length(12), Constraint::Min(4)])
+            .constraints([Constraint::Length(16), Constraint::Min(4)])
             .split(body[1]);
-        render_panel(frame, right[0], "Location", location_lines(dashboard), compact);
+        render_panel(frame, right[0], "Location", location_lines(dashboard, scene), compact);
         render_log(frame, right[1], log, compact);
     }
 
     if let Some(prompt_lines) = prompt {
-        render_prompt_panel(frame, root[2], prompt_lines, compact);
+        render_prompt_panel(frame, root[1], prompt_lines, compact);
     } else {
-        render_footer(frame, root[2], dashboard, compact, notice);
+        render_footer(frame, root[1], dashboard, compact, notice);
     }
 }
 
@@ -526,9 +531,6 @@ fn status_lines(dashboard: &Dashboard) -> Vec<String> {
     if !dashboard.world_name.is_empty() {
         lines.push(format!("World: {}", dashboard.world_name));
     }
-    if !dashboard.character_line.is_empty() {
-        lines.push(dashboard.character_line.clone());
-    }
     if !dashboard.hp_line.is_empty() {
         lines.push(dashboard.hp_line.clone());
     }
@@ -541,27 +543,18 @@ fn status_lines(dashboard: &Dashboard) -> Vec<String> {
     if let Some(line) = &dashboard.danger_line {
         lines.push(line.clone());
     }
-    if let Some(line) = &dashboard.reputation_line {
-        lines.push(line.clone());
-    }
     lines
 }
 
-fn location_lines(dashboard: &Dashboard) -> Vec<String> {
+fn location_lines(dashboard: &Dashboard, scene: &[String]) -> Vec<String> {
     let mut lines = Vec::new();
     if let Some(line) = &dashboard.location_name {
         lines.push(line.clone());
     }
+    if !scene.is_empty() {
+        lines.extend(scene.iter().cloned());
+    }
     if let Some(line) = &dashboard.location_description {
-        lines.push(line.clone());
-    }
-    if let Some(line) = &dashboard.people_line {
-        lines.push(line.clone());
-    }
-    if let Some(line) = &dashboard.remains_line {
-        lines.push(line.clone());
-    }
-    if let Some(line) = &dashboard.exits_line {
         lines.push(line.clone());
     }
     if let Some(line) = &dashboard.threat_line {
