@@ -432,7 +432,7 @@ fn quit_screen() -> std::io::Result<bool> {
     println!("{choices}");
 
     loop {
-        match prompt("Leave the game? [y/N]")?.to_ascii_lowercase().as_str() {
+        match prompt("")?.as_str() {
             "y" | "yes" => return Ok(true),
             "n" | "no" | "" => return Ok(false),
             _ => println!("Choose Y to leave, or N to stay."),
