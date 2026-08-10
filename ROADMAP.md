@@ -411,4 +411,11 @@ Completed:
 - moved the pause prompt out of the center overlay so result text stays visible
 - reduced the choice popup footprint so it does not bury the rest of the screen as aggressively
 - bumped the project version to 0.17.2
+## v0.17.3 Docked prompt layout cleanup
+
+Completed:
+- moved prompt and confirmation dialogs into a reserved bottom panel instead of drawing them over the rest of the UI
+- kept the main dashboard visible while choices, pause prompts, and quit confirmations are active
+- tightened the prompt layout so messages and results stay readable behind the prompt flow
+- bumped the project version to 0.17.3
 

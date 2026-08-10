@@ -64,9 +64,15 @@ fn is_compact_area(area: Rect) -> bool {
     area.width <= 112 || area.height <= 36 || area.width <= area.height.saturating_mul(2)
 }
 
-fn prompt_popup_rect(area: Rect, compact: bool) -> Rect {
-    let (width, height) = if compact { (82, 58) } else { (70, 48) };
-    centered_rect(width, height, area)
+fn bottom_panel_height(area: Rect, compact: bool, content_lines: usize) -> u16 {
+    let base_height = if compact { 7 } else { 6 };
+    let max_height = if compact {
+        area.height.saturating_mul(40) / 100
+    } else {
+        area.height.saturating_mul(34) / 100
+    };
+    let desired = content_lines as u16 + 4;
+    desired.clamp(base_height, max_height.max(base_height))
 }
 
 pub fn init() -> io::Result<UiGuard> {
@@ -181,7 +187,7 @@ pub fn choose_from_list(
     loop {
         let (term_width, term_height) = terminal::size().unwrap_or((100, 40));
         let compact = term_width <= 112 || term_height <= 36 || term_width <= term_height.saturating_mul(2);
-        let popup_height = if compact { 84 } else { 60 };
+        let popup_height = if compact { 42 } else { 34 };
         let inner_height = ((term_height as u32 * popup_height as u32) / 100) as usize;
         let mut available_option_rows = inner_height.saturating_sub(6);
         if zero_label.is_some() {
@@ -381,9 +387,18 @@ fn draw_dashboard(
     notice: Option<&str>,
 ) {
     let compact = is_compact_area(area);
+    let bottom_lines = prompt
+        .map(|lines| lines.len())
+        .or_else(|| notice.map(|text| text.lines().count()))
+        .unwrap_or(0);
+    let bottom_height = if bottom_lines == 0 {
+        3
+    } else {
+        bottom_panel_height(area, compact, bottom_lines)
+    };
     let root = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Length(5), Constraint::Min(8), Constraint::Length(3)])
+        .constraints([Constraint::Length(5), Constraint::Min(8), Constraint::Length(bottom_height)])
         .split(area);
 
     render_header(frame, root[0], dashboard, compact);
@@ -425,10 +440,10 @@ fn draw_dashboard(
         render_log(frame, right[1], log, compact);
     }
 
-    render_footer(frame, root[2], dashboard, compact, notice);
-
     if let Some(prompt_lines) = prompt {
-        render_prompt(frame, area, prompt_lines, compact);
+        render_prompt_panel(frame, root[2], prompt_lines, compact);
+    } else {
+        render_footer(frame, root[2], dashboard, compact, notice);
     }
 }
 
@@ -498,13 +513,11 @@ fn render_footer(frame: &mut ratatui::Frame<'_>, area: Rect, dashboard: &Dashboa
     frame.render_widget(paragraph, area);
 }
 
-fn render_prompt(frame: &mut ratatui::Frame<'_>, area: Rect, prompt_lines: &[String], compact: bool) {
-    let popup = prompt_popup_rect(area, compact);
-    frame.render_widget(Clear, popup);
+fn render_prompt_panel(frame: &mut ratatui::Frame<'_>, area: Rect, prompt_lines: &[String], compact: bool) {
     let paragraph = Paragraph::new(prompt_lines.join("\n"))
         .block(Block::default().borders(Borders::ALL).title("Prompt").style(border_style(compact)))
         .wrap(Wrap { trim: true });
-    frame.render_widget(paragraph, popup);
+    frame.render_widget(paragraph, area);
 }
 
 fn status_lines(dashboard: &Dashboard) -> Vec<String> {
@@ -564,22 +577,3 @@ fn border_style(compact: bool) -> Style {
     }
 }
 
-fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
-    let popup_layout = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Percentage((100 - percent_y) / 2),
-            Constraint::Percentage(percent_y),
-            Constraint::Percentage((100 - percent_y) / 2),
-        ])
-        .split(r);
-
-    Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([
-            Constraint::Percentage((100 - percent_x) / 2),
-            Constraint::Percentage(percent_x),
-            Constraint::Percentage((100 - percent_x) / 2),
-        ])
-        .split(popup_layout[1])[1]
-}
