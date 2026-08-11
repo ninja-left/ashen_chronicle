@@ -509,9 +509,6 @@ fn draw_dashboard(
 fn render_status_panel(frame: &mut ratatui::Frame<'_>, area: Rect, dashboard: &Dashboard, compact: bool) {
     let head_title = format!("The Ashen Chronicle v{}", env!("CARGO_PKG_VERSION"));                                                                 let head_title: &str = head_title.as_str();
 
-    const DARK_RED: Color = Color::Rgb(139, 0, 0);
-    const DARK_MAGENTA: Color = Color::Rgb(139, 0, 139);
-
     let block = Block::default()
         .borders(Borders::ALL)
         .title(head_title)
@@ -548,7 +545,7 @@ fn render_status_panel(frame: &mut ratatui::Frame<'_>, area: Rect, dashboard: &D
         width: inner.width,
         height: 1,
     };
-    render_health_gauge(frame, gauge_area, "HP", dashboard.hp, dashboard.max_hp, DARK_RED, Color::DarkGray);
+    render_health_gauge(frame, gauge_area, "HP", dashboard.hp, dashboard.max_hp, Color::Red, Color::DarkGray);
 
     if let (Some(enemy_name), Some(enemy_hp), Some(enemy_max_hp)) = (
         dashboard.enemy_name.as_deref(),
@@ -557,7 +554,7 @@ fn render_status_panel(frame: &mut ratatui::Frame<'_>, area: Rect, dashboard: &D
     ) {
         gauge_area.y += 1;
         let title = format!("{} HP", enemy_name);
-        render_health_gauge(frame, gauge_area, &title, enemy_hp, enemy_max_hp, DARK_MAGENTA, Color::DarkGray);
+        render_health_gauge(frame, gauge_area, &title, enemy_hp, enemy_max_hp, Color::Red, Color::DarkGray);
     }
 }
 
@@ -578,7 +575,9 @@ fn render_health_gauge(
     let ratio = current as f64 / maximum as f64;
     let gauge = LineGauge::default()
         .ratio(ratio)
-        .label(format!("{}: {}/{}", label, current, maximum))
+        .label(format!("{}: ", label))
+        .filled_symbol("█")
+        .unfilled_symbol("░")
         .filled_style(Style::default().fg(fill))
         .unfilled_style(Style::default().fg(empty));
     frame.render_widget(gauge, area);
