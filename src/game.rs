@@ -1,4 +1,5 @@
 use crate::content::{load_campaign_content, CampaignContent};
+use crate::events::{trigger_event, EventContext};
 use crate::model::{
     create_inherited_state, create_new_state, Corpse, EntityId, Faction, GameState, Item, Npc,
     Condition, Quest, WorldMode,
@@ -965,7 +966,9 @@ fn travel(state: &mut GameState) -> std::io::Result<()> {
             let character_name = state.character.display_name();
             state.world.record_history(state.character.turn, format!("{} traveled to {}.", character_name, location_name));
             println!("You travel to {}.", location_name);
-            random_travel_event(state, &location_name);
+            let dangerous = location.as_ref().map(|loc| loc.dangerous).unwrap_or(false);
+            let context = EventContext::for_travel_arrival(&location_name, dangerous, is_night(state.world.time_points));
+            trigger_event(state, &context);
 
             if let Some(location) = location {
                 if location.dangerous {
@@ -980,51 +983,6 @@ fn travel(state: &mut GameState) -> std::io::Result<()> {
         }
     }
     Ok(())
-}
-
-fn random_travel_event(state: &mut GameState, location_name: &str) {
-    let tick = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|duration| duration.subsec_nanos() as usize)
-        .unwrap_or(0);
-    if tick % 4 != 0 {
-        return;
-    }
-
-    match ((tick / 4) + state.world.time_points as usize) % 3 {
-        0 => {
-            println!("A black feather skitters across the road and catches on your boot.");
-            state.world.record_history(
-                state.character.turn,
-                format!("{} noticed a black feather while traveling to {}.", state.character.display_name(), location_name),
-            );
-            pause();
-        }
-        1 => {
-            println!("You spot an old trail marker half-buried in the ash.");
-            state.world.record_history(
-                state.character.turn,
-                format!("{} found an old trail marker while traveling to {}.", state.character.display_name(), location_name),
-            );
-            pause();
-        }
-        _ if is_night(state.world.time_points) => {
-            println!("A lantern appears far down the road, then vanishes before you can follow it.");
-            state.world.record_history(
-                state.character.turn,
-                format!("{} saw a vanishing lantern while traveling to {} at night.", state.character.display_name(), location_name),
-            );
-            pause();
-        }
-        _ => {
-            println!("A distant cry follows you for a few steps, then fades.");
-            state.world.record_history(
-                state.character.turn,
-                format!("{} heard a distant cry while traveling to {}.", state.character.display_name(), location_name),
-            );
-            pause();
-        }
-    }
 }
 
 fn meditate_and_save(state: &mut GameState, save_path: &PathBuf) -> std::io::Result<()> {

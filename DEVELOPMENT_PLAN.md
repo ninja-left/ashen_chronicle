@@ -225,3 +225,7 @@ That proves the concept.
 This project should be built as a persistent world simulation with text-driven presentation, not as a content pile glued onto a combat system.
 
 If the architecture is right early, adding items, images, quests, mods, and new systems later stays manageable. If the architecture is wrong, every new feature will break something else.
+
+## Phase 12: Data-driven events
+
+World incidents should be authored as content rather than hardcoded branches. Events use stable IDs and named triggers, then pass through reusable condition checks, chance/weight selection, effects, and persistent cooldowns. This system is intentionally extensible so future versions can add location incidents, timed world changes, quest hooks, combat-adjacent events, and branching narrative without expanding the main game loop.

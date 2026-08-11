@@ -452,3 +452,41 @@ Completed:
 - normalized panel rendering and collapsed border overlap across compact and wide layouts
 - removed redundant combat HP text output and simplified the result display
 - bumped the project version to 0.17.6
+
+## Phase 12: Data-driven event system
+
+Goal: move world events out of hardcoded gameplay branches and establish reusable trigger, condition, selection, effect, and cooldown infrastructure.
+
+Work items:
+- event content definitions with stable IDs and trigger names
+- conditional event filtering for time, location, and danger state
+- weighted and chance-based event selection
+- persistent event cooldown state in world saves
+- reusable event effects for narrative output and future gameplay effects
+- validation and focused unit tests for event behavior
+- migrate existing travel events from `game.rs` into base content
+
+Status: complete.
+
+## v0.18.0 Event system foundation
+
+Completed:
+- added a reusable event runtime in `src/events.rs`
+- added stable event IDs, triggers, weights, chance gates, conditions, effects, and cooldowns to campaign content
+- migrated the four existing travel events into `data/base_content.json`
+- persisted event cooldowns as part of the world state with serde defaults for older saves
+- added content validation for event IDs, triggers, weights, effects, chance ranges, and condition references
+- added unit tests covering event conditions and cooldown eligibility
+- removed the old hardcoded random travel-event branch from `game.rs`
+- bumped the project version to 0.18.0
+
+## v0.18.1 Event validation and persistence test coverage
+
+Completed:
+- reject invalid individual event definitions instead of loading them into the runtime
+- emit warnings identifying each rejected event and the exact validation reasons while continuing to load valid content
+- reject duplicate event IDs without overwriting previously accepted events
+- added save/load coverage for persistent event cooldowns
+- added world-inheritance coverage confirming event cooldown state persists with the inherited world
+- added content filtering tests for invalid events and duplicate event IDs
+- bumped the project version to 0.18.1

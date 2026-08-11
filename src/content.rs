@@ -26,6 +26,8 @@ pub struct CampaignContent {
     pub atmospheres: Vec<LocationAtmosphere>,
     #[serde(default)]
     pub item_visuals: Vec<ItemVisualContent>,
+    #[serde(default)]
+    pub events: Vec<EventContent>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -107,6 +109,46 @@ pub struct ItemVisualContent {
     pub art: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct EventConditionContent {
+    #[serde(default)]
+    pub night: Option<bool>,
+    #[serde(default)]
+    pub dangerous: Option<bool>,
+    #[serde(default)]
+    pub min_day: Option<u32>,
+    #[serde(default)]
+    pub max_day: Option<u32>,
+    #[serde(default)]
+    pub locations: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum EventEffectContent {
+    Message { text: String },
+    History { text: String },
+    Pause,
+    Heal { amount: i32 },
+    Damage { amount: i32 },
+    AddCondition { name: String, remaining: u32, #[serde(default)] penalty: i32, #[serde(default)] bonus: i32 },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EventContent {
+    pub id: String,
+    pub trigger: String,
+    #[serde(default)]
+    pub weight: u32,
+    #[serde(default)]
+    pub chance_percent: Option<u8>,
+    #[serde(default)]
+    pub cooldown_turns: Option<u32>,
+    #[serde(default)]
+    pub conditions: Option<EventConditionContent>,
+    pub effects: Vec<EventEffectContent>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModManifest {
     pub id: String,
@@ -146,6 +188,7 @@ impl CampaignContent {
         validate_unique_ids("npc", self.npcs.iter().map(|entry| entry.id.as_str()), &mut issues);
         validate_unique_ids("quest", self.quests.iter().map(|entry| entry.id.as_str()), &mut issues);
         validate_unique_ids("item visual", self.item_visuals.iter().map(|entry| entry.item_name.as_str()), &mut issues);
+        validate_unique_ids("event", self.events.iter().map(|entry| entry.id.as_str()), &mut issues);
 
         let location_names: HashSet<&str> = self.world.locations.iter().map(|entry| entry.name.as_str()).collect();
         let faction_names: HashSet<&str> = self.factions.iter().map(|entry| entry.name.as_str()).collect();
@@ -185,6 +228,38 @@ impl CampaignContent {
         for encounter in &self.encounters {
             if !location_names.contains(encounter.location_name.as_str()) {
                 issues.push(format!("encounter {} uses unknown location {}", encounter.enemy_name, encounter.location_name));
+            }
+        }
+
+        for event in &self.events {
+            if event.id.trim().is_empty() {
+                issues.push("event has an empty id".to_string());
+            }
+            if event.trigger.trim().is_empty() {
+                issues.push(format!("event {} has an empty trigger", event.id));
+            }
+            if event.weight == 0 {
+                issues.push(format!("event {} has zero weight", event.id));
+            }
+            if let Some(chance) = event.chance_percent {
+                if chance > 100 {
+                    issues.push(format!("event {} has invalid chance {}", event.id, chance));
+                }
+            }
+            if event.effects.is_empty() {
+                issues.push(format!("event {} has no effects", event.id));
+            }
+            if let Some(conditions) = &event.conditions {
+                for location in &conditions.locations {
+                    if !location_names.contains(location.as_str()) {
+                        issues.push(format!("event {} uses unknown location {}", event.id, location));
+                    }
+                }
+                if let (Some(min_day), Some(max_day)) = (conditions.min_day, conditions.max_day) {
+                    if min_day > max_day {
+                        issues.push(format!("event {} has min_day greater than max_day", event.id));
+                    }
+                }
             }
         }
 
@@ -317,13 +392,29 @@ pub fn load_campaign_content() -> CampaignContent {
 }
 
 pub fn load_campaign_content_report() -> ContentLoadReport {
-    let mut report = ContentLoadReport::with_content(match load_base_content() {
+    let base_content = match load_base_content() {
         Ok(content) => content,
         Err(err) => {
             ui::diagnostic(&format!("Could not load campaign content from disk: {err}"));
             default_campaign_content()
         }
-    });
+    };
+    let mut report = ContentLoadReport::with_content(base_content);
+    let base_location_names: HashSet<&str> = report
+        .content
+        .world
+        .locations
+        .iter()
+        .map(|entry| entry.name.as_str())
+        .collect();
+    let base_events = std::mem::take(&mut report.content.events);
+    report.content.events = filter_valid_events(
+        base_events,
+        &base_location_names,
+        &HashSet::<String>::new(),
+        "base content",
+        &mut report.warnings,
+    );
 
     let mut discovered_mods = discover_mods();
     discovered_mods.sort_by(|left, right| {
@@ -350,7 +441,7 @@ pub fn load_campaign_content_report() -> ContentLoadReport {
         let manifest_name = manifest.name.clone();
         match load_mod_content(&discovered.manifest_path, &manifest) {
             Ok(mod_content) => {
-                merge_campaign_content(&mut report.content, mod_content);
+                merge_campaign_content(&mut report.content, mod_content, &mut report.warnings);
                 report.loaded_mods.push(manifest);
             }
             Err(err) => {
@@ -444,7 +535,7 @@ fn first_existing_path(relative: &str) -> Option<PathBuf> {
     candidates.into_iter().find(|path| Path::new(path).exists())
 }
 
-fn merge_campaign_content(base: &mut CampaignContent, incoming: CampaignContent) {
+fn merge_campaign_content(base: &mut CampaignContent, incoming: CampaignContent, warnings: &mut Vec<String>) {
     base.world.region = incoming.world.region;
     merge_vec_by_key(&mut base.world.locations, incoming.world.locations, |entry| entry.id.clone());
     merge_vec_by_key(&mut base.factions, incoming.factions, |entry| entry.id.clone());
@@ -453,6 +544,84 @@ fn merge_campaign_content(base: &mut CampaignContent, incoming: CampaignContent)
     merge_vec_by_key(&mut base.encounters, incoming.encounters, |entry| entry.location_name.clone());
     merge_vec_by_key(&mut base.atmospheres, incoming.atmospheres, |entry| entry.location_name.clone());
     merge_vec_by_key(&mut base.item_visuals, incoming.item_visuals, |entry| entry.item_name.clone());
+
+    let location_names: HashSet<&str> = base
+        .world
+        .locations
+        .iter()
+        .map(|entry| entry.name.as_str())
+        .collect();
+    let existing_ids: HashSet<String> = base.events.iter().map(|event| event.id.clone()).collect();
+    let accepted_events = filter_valid_events(
+        incoming.events,
+        &location_names,
+        &existing_ids,
+        "mod content",
+        warnings,
+    );
+    base.events.extend(accepted_events);
+}
+
+fn filter_valid_events(
+    events: Vec<EventContent>,
+    location_names: &HashSet<&str>,
+    existing_ids: &HashSet<String>,
+    source: &str,
+    warnings: &mut Vec<String>,
+) -> Vec<EventContent> {
+    let mut accepted = Vec::with_capacity(events.len());
+    let mut seen_ids = existing_ids.clone();
+    for event in events {
+        let mut issues = validate_event_content(&event, location_names);
+        if !seen_ids.insert(event.id.clone()) {
+            issues.push(format!("duplicate event id {}", event.id));
+        }
+        if issues.is_empty() {
+            accepted.push(event);
+        } else {
+            warnings.push(format!(
+                "rejecting event '{}' from {}: {}",
+                event.id,
+                source,
+                issues.join("; ")
+            ));
+        }
+    }
+    accepted
+}
+
+fn validate_event_content(event: &EventContent, location_names: &HashSet<&str>) -> Vec<String> {
+    let mut issues = Vec::new();
+    if event.id.trim().is_empty() {
+        issues.push("empty id".to_string());
+    }
+    if event.trigger.trim().is_empty() {
+        issues.push("empty trigger".to_string());
+    }
+    if event.weight == 0 {
+        issues.push("zero weight".to_string());
+    }
+    if let Some(chance) = event.chance_percent {
+        if chance > 100 {
+            issues.push(format!("invalid chance {}", chance));
+        }
+    }
+    if event.effects.is_empty() {
+        issues.push("no effects".to_string());
+    }
+    if let Some(conditions) = &event.conditions {
+        for location in &conditions.locations {
+            if !location_names.contains(location.as_str()) {
+                issues.push(format!("unknown location {}", location));
+            }
+        }
+        if let (Some(min_day), Some(max_day)) = (conditions.min_day, conditions.max_day) {
+            if min_day > max_day {
+                issues.push("min_day greater than max_day".to_string());
+            }
+        }
+    }
+    issues
 }
 
 fn merge_vec_by_key<T, F>(base: &mut Vec<T>, incoming: Vec<T>, key_fn: F)
@@ -481,4 +650,69 @@ fn default_mod_content_file() -> String {
 fn default_campaign_content() -> CampaignContent {
     serde_json::from_str(include_str!("../data/base_content.json"))
         .expect("embedded base content JSON must remain valid")
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn valid_event(id: &str) -> EventContent {
+        EventContent {
+            id: id.to_string(),
+            trigger: "travel_arrival".to_string(),
+            weight: 1,
+            chance_percent: Some(100),
+            cooldown_turns: None,
+            conditions: None,
+            effects: vec![EventEffectContent::Pause],
+        }
+    }
+
+    #[test]
+    fn invalid_events_are_rejected_and_reported() {
+        let mut warnings = Vec::new();
+        let locations = HashSet::from(["Ashen Gate"]);
+        let mut invalid = valid_event("bad.event");
+        invalid.weight = 0;
+        invalid.conditions = Some(EventConditionContent {
+            locations: vec!["Unknown Place".to_string()],
+            ..Default::default()
+        });
+
+        let accepted = filter_valid_events(
+            vec![valid_event("good.event"), invalid],
+            &locations,
+            &HashSet::<String>::new(),
+            "test content",
+            &mut warnings,
+        );
+
+        assert_eq!(accepted.len(), 1);
+        assert_eq!(accepted[0].id, "good.event");
+        assert_eq!(warnings.len(), 1);
+        assert!(warnings[0].contains("bad.event"));
+        assert!(warnings[0].contains("zero weight"));
+        assert!(warnings[0].contains("unknown location"));
+    }
+
+    #[test]
+    fn duplicate_event_ids_are_rejected_without_overwriting_existing_content() {
+        let mut warnings = Vec::new();
+        let locations = HashSet::from(["Ashen Gate"]);
+        let existing = HashSet::from(["travel.event".to_string()]);
+
+        let accepted = filter_valid_events(
+            vec![valid_event("travel.event"), valid_event("new.event")],
+            &locations,
+            &existing,
+            "mod content",
+            &mut warnings,
+        );
+
+        assert_eq!(accepted.len(), 1);
+        assert_eq!(accepted[0].id, "new.event");
+        assert_eq!(warnings.len(), 1);
+        assert!(warnings[0].contains("duplicate event id travel.event"));
+    }
 }

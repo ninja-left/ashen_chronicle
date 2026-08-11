@@ -50,3 +50,48 @@ pub fn load_game(path: &Path) -> io::Result<GameState> {
     }
     Ok(game)
 }
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::{create_new_state, EventCooldown, WorldMode};
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn temp_save_path() -> std::path::PathBuf {
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system clock should be valid")
+            .as_nanos();
+        std::env::temp_dir().join(format!("ashen_chronicle_save_test_{}_{}.json", std::process::id(), stamp))
+    }
+
+    #[test]
+    fn event_cooldowns_survive_save_and_load() {
+        let path = temp_save_path();
+        let mut state = create_new_state(
+            "Test World",
+            WorldMode::New,
+            "Tester".to_string(),
+            "Ash Walker".to_string(),
+        );
+        state.character.turn = 7;
+        state.world.event_cooldowns.push(EventCooldown {
+            event_id: "travel.ruined-road".to_string(),
+            ready_at_turn: 11,
+        });
+
+        save_game(&path, &state).expect("save should succeed");
+        let loaded = load_game(&path).expect("load should succeed");
+        let _ = std::fs::remove_file(&path);
+
+        assert_eq!(loaded.character.turn, 7);
+        assert_eq!(
+            loaded.world.event_cooldowns,
+            vec![EventCooldown {
+                event_id: "travel.ruined-road".to_string(),
+                ready_at_turn: 11,
+            }]
+        );
+    }
+}

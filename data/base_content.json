@@ -287,5 +287,93 @@
       "item_name": "Bell Covenant Charm",
       "art": "   /\\\\\n  (  )\n   ||\n"
     }
+  ],
+  "events": [
+    {
+      "id": "event.travel.black_feather",
+      "trigger": "travel_arrival",
+      "weight": 1,
+      "chance_percent": 25,
+      "cooldown_turns": 1,
+      "effects": [
+        {
+          "type": "message",
+          "text": "A black feather skitters across the road and catches on your boot."
+        },
+        {
+          "type": "history",
+          "text": "{character} noticed a black feather while traveling to {location}."
+        },
+        {
+          "type": "pause"
+        }
+      ]
+    },
+    {
+      "id": "event.travel.old_trail_marker",
+      "trigger": "travel_arrival",
+      "weight": 1,
+      "chance_percent": 25,
+      "cooldown_turns": 1,
+      "effects": [
+        {
+          "type": "message",
+          "text": "You spot an old trail marker half-buried in the ash."
+        },
+        {
+          "type": "history",
+          "text": "{character} found an old trail marker while traveling to {location}."
+        },
+        {
+          "type": "pause"
+        }
+      ]
+    },
+    {
+      "id": "event.travel.vanishing_lantern",
+      "trigger": "travel_arrival",
+      "weight": 1,
+      "chance_percent": 25,
+      "cooldown_turns": 1,
+      "conditions": {
+        "night": true
+      },
+      "effects": [
+        {
+          "type": "message",
+          "text": "A lantern appears far down the road, then vanishes before you can follow it."
+        },
+        {
+          "type": "history",
+          "text": "{character} saw a vanishing lantern while traveling to {location} at night."
+        },
+        {
+          "type": "pause"
+        }
+      ]
+    },
+    {
+      "id": "event.travel.distant_cry",
+      "trigger": "travel_arrival",
+      "weight": 1,
+      "chance_percent": 25,
+      "cooldown_turns": 1,
+      "conditions": {
+        "night": false
+      },
+      "effects": [
+        {
+          "type": "message",
+          "text": "A distant cry follows you for a few steps, then fades."
+        },
+        {
+          "type": "history",
+          "text": "{character} heard a distant cry while traveling to {location}."
+        },
+        {
+          "type": "pause"
+        }
+      ]
+    }
   ]
 }

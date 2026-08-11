@@ -1,4 +1,5 @@
 mod content;
+mod events;
 mod game;
 mod model;
 mod persistence;

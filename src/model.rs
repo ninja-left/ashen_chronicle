@@ -51,6 +51,14 @@ pub struct World {
     pub day: u32,
     #[serde(default, alias = "completed_quest_titles")]
     pub completed_quest_ids: Vec<String>,
+    #[serde(default)]
+    pub event_cooldowns: Vec<EventCooldown>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+pub struct EventCooldown {
+    pub event_id: String,
+    pub ready_at_turn: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -230,6 +238,7 @@ impl World {
             time_points: 3,
             day: 1,
             completed_quest_ids: Vec::new(),
+            event_cooldowns: Vec::new(),
         }
     }
 
@@ -430,5 +439,36 @@ pub fn create_inherited_state(state: &GameState, character_name: String, title: 
         npcs: state.npcs.clone(),
         quests: Vec::new(),
         last_announced_location_id: None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn inherited_world_preserves_event_cooldowns() {
+        let mut state = create_new_state(
+            "Test World",
+            WorldMode::New,
+            "First Warden".to_string(),
+            "Ash Walker".to_string(),
+        );
+        state.character.turn = 9;
+        state.world.event_cooldowns.push(EventCooldown {
+            event_id: "travel.ruined-road".to_string(),
+            ready_at_turn: 14,
+        });
+        state.world.record_history(9, "A life ended here.".to_string());
+
+        let inherited = create_inherited_state(
+            &state,
+            "Second Warden".to_string(),
+            "Ash Walker".to_string(),
+        );
+
+        assert!(matches!(inherited.world.mode, WorldMode::Inherited));
+        assert_eq!(inherited.world.event_cooldowns, state.world.event_cooldowns);
+        assert_eq!(inherited.world.event_cooldowns[0].ready_at_turn, 14);
     }
 }
