@@ -798,10 +798,6 @@ fn adjust_faction_reputation(state: &mut GameState, faction_id: EntityId, delta:
     }
 }
 
-fn corpses_at_location<'a>(state: &'a GameState, location_id: EntityId) -> Vec<&'a Corpse> {
-    state.corpses.iter().filter(|corpse| corpse.location_id == location_id).collect()
-}
-
 fn corpse_label(corpse: &Corpse) -> String {
     if corpse.former_name.is_empty() {
         "Unidentified remains".to_string()
