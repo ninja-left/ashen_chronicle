@@ -4,7 +4,7 @@ use crate::model::{
     Condition, Quest, WorldMode,
 };
 use crate::persistence::{load_game, save_game};
-use crate::ui::{choose_from_list, clear_log, narrate, pause, prompt, set_location_scene, Dashboard};
+use crate::ui::{choose_from_list, clear_combat_health, clear_log, narrate, pause, prompt, set_combat_health, set_location_scene, set_player_health, Dashboard};
 use std::mem;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -490,7 +490,11 @@ fn render_state(state: &GameState) {
     let threat_line = if state.threat.active { Some(format!("Threat: {}", state.threat.label)) } else { None };
     let dashboard = Dashboard {
         world_name: world.name.clone(),
-        hp_line: format!("HP: {}/{}", character.hp, character.max_hp),
+        hp: character.hp,
+        max_hp: character.max_hp,
+        enemy_name: None,
+        enemy_hp: None,
+        enemy_max_hp: None,
         time_display: time_display(world.time_points, world.day),
         condition_line,
         location_name: location.map(|location| format!("~ {} ~", location.name)),
@@ -1072,10 +1076,12 @@ fn investigate_threat(state: &mut GameState) -> std::io::Result<()> {
     };
 
     let (enemy_name, enemy_hp, enemy_power, trophy_name) = encounter_profile(&location.name);
+    let enemy_max_hp = enemy_hp.max(1);
     let mut encounter = CombatEncounter { enemy_name, enemy_hp, enemy_power, enemy_id: state.world.allocate_id() };
 
+    set_player_health(state.character.hp, state.character.max_hp);
+    set_combat_health(encounter.enemy_name.clone(), encounter.enemy_hp, enemy_max_hp);
     println!("\nYou step into the threat.");
-    println!("Enemy: {}", encounter.enemy_name);
 
     loop {
         if !state.character.alive {
@@ -1102,20 +1108,20 @@ fn investigate_threat(state: &mut GameState) -> std::io::Result<()> {
             println!("\nCombat result: victory");
             println!("  Defeated: {}", enemy_name);
             println!("  Loot: {}", trophy.name);
-            println!("  HP remaining: {}/{}", state.character.hp, state.character.max_hp);
             narrate("The threat is broken. The place is quieter now.");
+            clear_combat_health();
             break;
         }
 
-        println!("\n{} HP: {}", encounter.enemy_name, encounter.enemy_hp);
-        println!("Your HP: {}/{}", state.character.hp, state.character.max_hp);
+        set_combat_health(encounter.enemy_name.clone(), encounter.enemy_hp, enemy_max_hp);
         let choices = vec!["Attack".to_string(), "Guard".to_string(), "Flee".to_string()];
         match choose_from_list("Combat action", &choices, None)? {
             Some(0) => {
                 advance_time(state, 1);
                 state.character.turn += 1;
                 let damage = (3 + state.character.effective_might()).max(1);
-                encounter.enemy_hp -= damage;
+                encounter.enemy_hp = (encounter.enemy_hp - damage).max(0);
+                set_combat_health(encounter.enemy_name.clone(), encounter.enemy_hp, enemy_max_hp);
                 println!("You strike {} for {} damage.", encounter.enemy_name, damage);
                 let character_name = state.character.display_name();
                 state.world.record_history(
@@ -1151,6 +1157,7 @@ fn investigate_threat(state: &mut GameState) -> std::io::Result<()> {
                 );
                 println!("You flee. The threat remains.");
                 pause();
+                clear_combat_health();
                 break;
             }
             _ => {}
@@ -1160,10 +1167,12 @@ fn investigate_threat(state: &mut GameState) -> std::io::Result<()> {
             let location_name = location.name.clone();
             mark_character_dead(state, format!("{} overcame them", encounter.enemy_name), &location_name);
             narrate("You were overwhelmed.");
+            clear_combat_health();
             break;
         }
     }
 
+    clear_combat_health();
     Ok(())
 }
 
@@ -1188,6 +1197,7 @@ fn take_combat_damage(state: &mut GameState, damage: i32, enemy_name: &str, loca
     }
 
     state.character.hp -= damage;
+    set_player_health(state.character.hp, state.character.max_hp);
     let character_name = state.character.display_name();
     state.world.record_history(
         state.character.turn,

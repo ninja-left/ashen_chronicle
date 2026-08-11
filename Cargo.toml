@@ -1,6 +1,6 @@
 [package]
 name = "ashen_chronicle"
-version = "0.17.5"
+version = "0.17.6"
 edition = "2021"
 
 [profile.release]
@@ -12,7 +12,7 @@ strip = true
 [profile.test]
 inherits = "release"
 codegen-units = 256
-opt-level = "3"
+opt-level = 3
 strip = true
 
 [dependencies]

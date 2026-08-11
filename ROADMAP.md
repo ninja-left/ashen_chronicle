@@ -440,3 +440,15 @@ Completed:
 - fixed the quit confirmation prompt so it no longer prints a stray `>` on separate lines
 - bumped the project version to 0.17.5
 
+
+
+## v0.17.6 UI polish and health gauges
+
+Completed:
+- replaced plain-text player HP rendering with a ratatui `LineGauge`
+- added an enemy health `LineGauge` during combat
+- used blood/dark-red player health and dark-purple enemy health fills while retaining the monochrome UI elsewhere
+- kept combat health in the dashboard state so it updates while combat choices are rendered
+- normalized panel rendering and collapsed border overlap across compact and wide layouts
+- removed redundant combat HP text output and simplified the result display
+- bumped the project version to 0.17.6

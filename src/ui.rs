@@ -6,7 +6,7 @@ use ratatui::backend::CrosstermBackend;
 use ratatui::layout::{Constraint, Direction, Layout, Rect, Spacing};
 use ratatui::symbols::merge::MergeStrategy;
 use ratatui::prelude::{Color, Modifier, Style};
-use ratatui::widgets::{Block, Borders, Clear, Paragraph, Wrap};
+use ratatui::widgets::{Block, Borders, Clear, LineGauge, Paragraph, Wrap};
 use ratatui::Terminal;
 use std::io::{self, Stdout, Write};
 use std::sync::{Mutex, OnceLock};
@@ -14,7 +14,11 @@ use std::sync::{Mutex, OnceLock};
 #[derive(Clone, Default)]
 pub struct Dashboard {
     pub world_name: String,
-    pub hp_line: String,
+    pub hp: i32,
+    pub max_hp: i32,
+    pub enemy_name: Option<String>,
+    pub enemy_hp: Option<i32>,
+    pub enemy_max_hp: Option<i32>,
     pub time_display: String,
     pub condition_line: Option<String>,
     pub location_name: Option<String>,
@@ -92,6 +96,35 @@ pub fn set_dashboard(dashboard: Dashboard) {
     state.dashboard = dashboard;
     state.initialized = true;
     let _ = render_locked(&mut state, None, None);
+}
+
+pub fn set_player_health(current: i32, maximum: i32) {
+    let mut state = runtime().lock().unwrap();
+    state.dashboard.hp = current;
+    state.dashboard.max_hp = maximum.max(1);
+    if state.initialized {
+        let _ = render_locked(&mut state, None, None);
+    }
+}
+
+pub fn set_combat_health(enemy_name: impl Into<String>, enemy_hp: i32, enemy_max_hp: i32) {
+    let mut state = runtime().lock().unwrap();
+    state.dashboard.enemy_name = Some(enemy_name.into());
+    state.dashboard.enemy_hp = Some(enemy_hp.max(0));
+    state.dashboard.enemy_max_hp = Some(enemy_max_hp.max(1));
+    if state.initialized {
+        let _ = render_locked(&mut state, None, None);
+    }
+}
+
+pub fn clear_combat_health() {
+    let mut state = runtime().lock().unwrap();
+    state.dashboard.enemy_name = None;
+    state.dashboard.enemy_hp = None;
+    state.dashboard.enemy_max_hp = None;
+    if state.initialized {
+        let _ = render_locked(&mut state, None, None);
+    }
 }
 
 pub fn set_location_scene(lines: Vec<String>) {
@@ -202,7 +235,7 @@ pub fn choose_from_list(
 
     loop {
         let (term_width, term_height) = terminal::size().unwrap_or((100, 40));
-        let compact = term_width <= 112 || term_height <= 36 || term_width <= term_height.saturating_mul(2);
+        let compact = is_compact_area(Rect { x: 0, y: 0, width: term_width, height: term_height });
         let popup_height = if compact { 42 } else { 34 };
         let inner_height = ((term_height as u32 * popup_height as u32) / 100) as usize;
         let mut available_option_rows = inner_height.saturating_sub(6);
@@ -425,19 +458,17 @@ fn draw_dashboard(
         .spacing(Spacing::Overlap(1))
         .split(area);
 
-    let head_title = format!("The Ashen Chronicle v{}", env!("CARGO_PKG_VERSION"));
-    let head_title: &str = head_title.as_str();
     if compact {
         let body = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
-                Constraint::Percentage(32),
-                Constraint::Percentage(40),
+                Constraint::Percentage(34),
+                Constraint::Percentage(38),
                 Constraint::Percentage(28),
             ])
             .spacing(Spacing::Overlap(1))
             .split(root[0]);
-        render_panel(frame, body[0], head_title, status_lines(dashboard), compact);
+        render_status_panel(frame, body[0], dashboard, compact);
         render_panel(frame, body[1], "Location", location_lines(dashboard, scene), compact);
         render_log(frame, body[2], log, compact);
     } else {
@@ -451,7 +482,7 @@ fn draw_dashboard(
             .constraints([Constraint::Length(9), Constraint::Min(4)])
             .spacing(Spacing::Overlap(1))
             .split(body[0]);
-        render_panel(frame, left[0], head_title, status_lines(dashboard), compact);
+        render_status_panel(frame, left[0], dashboard, compact);
         render_panel(
             frame,
             left[1],
@@ -475,21 +506,96 @@ fn draw_dashboard(
     }
 }
 
-fn render_panel(frame: &mut ratatui::Frame<'_>, area: Rect, title: &str, lines: Vec<String>, compact: bool) {
-    if !lines.is_empty() {
-        // Don't create any lines if there's nothing to show
-        let content = lines;
-        let paragraph = Paragraph::new(content.join("\n"))
-            .block(Block::default().borders(Borders::ALL).title(title).style(border_style(compact)).merge_borders(MergeStrategy::Exact))
-            .wrap(Wrap { trim: true });
-        frame.render_widget(paragraph, area);
+fn render_status_panel(frame: &mut ratatui::Frame<'_>, area: Rect, dashboard: &Dashboard, compact: bool) {
+    let head_title = format!("The Ashen Chronicle v{}", env!("CARGO_PKG_VERSION"));                                                                 let head_title: &str = head_title.as_str();
+
+    const DARK_RED: Color = Color::Rgb(139, 0, 0);
+    const DARK_MAGENTA: Color = Color::Rgb(139, 0, 139);
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(head_title)
+        .style(border_style(compact))
+        .merge_borders(MergeStrategy::Exact);
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
+    let mut lines = Vec::new();
+    if !dashboard.world_name.is_empty() {
+        lines.push(format!("World: {}", dashboard.world_name));
     }
+    if !dashboard.time_display.is_empty() {
+        lines.push(dashboard.time_display.clone());
+    }
+    if let Some(line) = &dashboard.condition_line {
+        lines.push(line.clone());
+    }
+    if let Some(line) = &dashboard.danger_line {
+        lines.push(line.clone());
+    }
+
+    let gauge_rows = 1 + usize::from(dashboard.enemy_name.is_some());
+    let text_height = inner.height.saturating_sub(gauge_rows as u16);
+    let text_area = Rect { height: text_height, ..inner };
+    if text_height > 0 {
+        let paragraph = Paragraph::new(lines.join("\n")).wrap(Wrap { trim: true });
+        frame.render_widget(paragraph, text_area);
+    }
+
+    let mut gauge_area = Rect {
+        x: inner.x,
+        y: inner.y + text_height,
+        width: inner.width,
+        height: 1,
+    };
+    render_health_gauge(frame, gauge_area, "HP", dashboard.hp, dashboard.max_hp, DARK_RED, Color::DarkGray);
+
+    if let (Some(enemy_name), Some(enemy_hp), Some(enemy_max_hp)) = (
+        dashboard.enemy_name.as_deref(),
+        dashboard.enemy_hp,
+        dashboard.enemy_max_hp,
+    ) {
+        gauge_area.y += 1;
+        let title = format!("{} HP", enemy_name);
+        render_health_gauge(frame, gauge_area, &title, enemy_hp, enemy_max_hp, DARK_MAGENTA, Color::DarkGray);
+    }
+}
+
+fn render_health_gauge(
+    frame: &mut ratatui::Frame<'_>,
+    area: Rect,
+    label: &str,
+    current: i32,
+    maximum: i32,
+    fill: Color,
+    empty: Color,
+) {
+    if area.height == 0 || area.width == 0 {
+        return;
+    }
+    let maximum = maximum.max(1);
+    let current = current.clamp(0, maximum);
+    let ratio = current as f64 / maximum as f64;
+    let gauge = LineGauge::default()
+        .ratio(ratio)
+        .label(format!("{}: {}/{}", label, current, maximum))
+        .filled_style(Style::default().fg(fill))
+        .unfilled_style(Style::default().fg(empty));
+    frame.render_widget(gauge, area);
+}
+
+fn render_panel(frame: &mut ratatui::Frame<'_>, area: Rect, title: &str, lines: Vec<String>, compact: bool) {
+    let content = if lines.is_empty() { vec![String::new()] } else { lines };
+    let paragraph = Paragraph::new(content.join("\n"))
+        .block(Block::default().borders(Borders::ALL).title(title).style(border_style(compact)).merge_borders(MergeStrategy::Exact))
+        .wrap(Wrap { trim: true });
+    frame.render_widget(paragraph, area);
 }
 
 fn render_log(frame: &mut ratatui::Frame<'_>, area: Rect, log: &[String], compact: bool) {
     let visible_lines = area.height.saturating_sub(2) as usize;
     let content = if log.is_empty() {
-        vec!["No journal yet.".to_string()]
+        vec!["...".to_string()]
     } else {
         tail_lines(log, visible_lines.max(1))
     };
@@ -521,26 +627,6 @@ fn render_prompt_panel(frame: &mut ratatui::Frame<'_>, area: Rect, prompt_lines:
         .block(Block::default().borders(Borders::ALL).title("Actions").style(border_style(compact)).merge_borders(MergeStrategy::Exact))
         .wrap(Wrap { trim: true });
     frame.render_widget(paragraph, area);
-}
-
-fn status_lines(dashboard: &Dashboard) -> Vec<String> {
-    let mut lines = Vec::new();
-    if !dashboard.world_name.is_empty() {
-        lines.push(format!("World: {}", dashboard.world_name));
-    }
-    if !dashboard.hp_line.is_empty() {
-        lines.push(dashboard.hp_line.clone());
-    }
-    if !dashboard.time_display.is_empty() {
-        lines.push(dashboard.time_display.clone());
-    }
-    if let Some(line) = &dashboard.condition_line {
-        lines.push(line.clone());
-    }
-    if let Some(line) = &dashboard.danger_line {
-        lines.push(line.clone());
-    }
-    lines
 }
 
 fn location_lines(dashboard: &Dashboard, scene: &[String]) -> Vec<String> {
