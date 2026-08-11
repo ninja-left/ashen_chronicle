@@ -4,7 +4,7 @@ use crate::model::{
     create_inherited_state, create_new_state, Corpse, EntityId, Faction, GameState, Item, Npc,
     Condition, Quest, WorldMode,
 };
-use crate::persistence::{load_game, save_game};
+use crate::persistence::{character_save_path, find_save_files, legacy_save_path, load_game, save_game};
 use crate::ui::{choose_from_list, clear_combat_health, clear_log, narrate, pause, prompt, set_combat_health, set_location_scene, set_player_health, Dashboard};
 use std::mem;
 use std::path::PathBuf;
@@ -57,295 +57,51 @@ struct CombatEncounter {
 
 pub fn run() -> std::io::Result<()> {
     let _ui = crate::ui::init()?;
-    let save_path = PathBuf::from("ashen_chronicle_save.json");
-    let mut state = start_or_load(&save_path)?;
+    let (mut state, save_path) = start_or_load()?;
     bootstrap_campaign_content(&mut state);
     main_loop(&mut state, &save_path)
 }
 
-fn start_or_load(save_path: &PathBuf) -> std::io::Result<GameState> {
-    if save_path.exists() {
-        let choice = prompt("Load existing save? [y/N] ")?;
-        if choice.eq_ignore_ascii_case("y") {
-            match load_game(save_path) {
-                Ok(state) => {
-                    let warnings = validate_loaded_state(&state);
-                    if warnings.is_empty() {
-                        println!("Save loaded successfully.");
-                    } else {
-                        println!("Save loaded with {} warning(s):", warnings.len());
-                        for warning in warnings {
-                            println!("  - {}", warning);
-                        }
-                    }
-                    return Ok(state);
-                }
-                Err(err) => {
-                    println!("Could not load save: {err}");
-                    println!("Starting a new world instead.");
-                }
+fn start_or_load() -> std::io::Result<(GameState, PathBuf)> {
+    let current_dir = PathBuf::from(".");
+    let mut save_files = find_save_files(&current_dir)?;
+    let legacy_path = legacy_save_path(&current_dir);
+
+    if !save_files.is_empty() || legacy_path.exists() {
+        let selected = if save_files.len() == 1 {
+            Some(save_files.remove(0))
+        } else if save_files.len() > 1 {
+            println!("Existing saves found:");
+            for (index, path) in save_files.iter().enumerate() {
+                println!("  {}. {}", index + 1, path.display());
             }
-        }
-    }
-    create_from_prompts(WorldMode::New)
-}
-
-fn validate_loaded_state(state: &GameState) -> Vec<String> {
-    let mut warnings = Vec::new();
-    if state.world.location_by_id(state.character.location_id).is_none() {
-        warnings.push(format!("character location id {} does not exist", state.character.location_id));
-    }
-    for quest in &state.quests {
-        if state.world.location_by_id(quest.target_location_id).is_none() {
-            warnings.push(format!("quest '{}' points to missing target location {}", quest.title, quest.target_location_id));
-        }
-        if state.factions.iter().all(|faction| faction.id != quest.faction_id) {
-            warnings.push(format!("quest '{}' points to missing faction {}", quest.title, quest.faction_id));
-        }
-    }
-    warnings
-}
-
-fn create_from_prompts(mode: WorldMode) -> std::io::Result<GameState> {
-    let world_name = prompt("World name [The Ashen Crown]: ")?;
-    let world_name = if world_name.is_empty() { "The Ashen Crown".to_string() } else { world_name };
-    let character_name = prompt("Character name [Warden]: ")?;
-    let character_name = if character_name.is_empty() { "Warden".to_string() } else { character_name };
-    let title = prompt("Character title [Ashborn]: ")?;
-    let title = if title.is_empty() { "Ashborn".to_string() } else { title };
-    let mut state = create_new_state(&world_name, mode, character_name, title);
-    bootstrap_campaign_content(&mut state);
-    Ok(state)
-}
-
-fn create_inherited_from_world(state: &GameState) -> std::io::Result<GameState> {
-    let character_name = prompt("New character name [Warden]: ")?;
-    let character_name = if character_name.is_empty() { "Warden".to_string() } else { character_name };
-    let title = prompt("New character title [Ashborn]: ")?;
-    let title = if title.is_empty() { "Ashborn".to_string() } else { title };
-    let mut inherited = create_inherited_state(state, character_name, title);
-    bootstrap_campaign_content(&mut inherited);
-    Ok(inherited)
-}
-
-fn bootstrap_campaign_content(state: &mut GameState) {
-    let report = crate::content::load_campaign_content_report();
-    if !report.loaded_mods.is_empty() {
-        println!("Loaded mods:");
-        for manifest in &report.loaded_mods {
-            let version = if manifest.version.is_empty() { "unknown" } else { manifest.version.as_str() };
-            println!("  - {} ({}, v{})", manifest.name, manifest.id, version);
-        }
-    }
-    if !report.warnings.is_empty() {
-        eprintln!("Campaign content warnings:");
-        for issue in &report.warnings {
-            eprintln!("- {issue}");
-        }
-    }
-    let content = &report.content;
-    migrate_runtime_quest_data(state, content);
-    ensure_campaign_factions(state, content);
-    ensure_campaign_npcs(state, content);
-    ensure_campaign_quests(state, content);
-}
-
-fn migrate_runtime_quest_data(state: &mut GameState, content: &CampaignContent) {
-    for quest in &mut state.quests {
-        if quest.content_id.is_empty() {
-            if let Some(definition) = content
-                .quests
-                .iter()
-                .find(|entry| entry.id == quest.title || entry.title == quest.title)
-            {
-                quest.content_id = definition.id.clone();
-            }
-        }
-        if quest.reward_item_name.is_empty() {
-            if let Some(definition) = content.quests.iter().find(|entry| entry.title == quest.title || entry.id == quest.content_id) {
-                quest.reward_item_name = definition.reward_item_name.clone();
-            }
-        }
-    }
-}
-
-fn ensure_campaign_factions(state: &mut GameState, content: &CampaignContent) {
-    for faction in &content.factions {
-        if faction_by_name(state, &faction.name).is_none() {
-            let id = state.world.allocate_id();
-            state.factions.push(Faction::new(id, faction.name.clone()));
-        }
-    }
-}
-
-fn ensure_campaign_npcs(state: &mut GameState, content: &CampaignContent) {
-    for npc in &content.npcs {
-        if npc_by_name(state, &npc.name).is_some() {
-            continue;
-        }
-        let Some(location_id) = location_id_by_name(&state.world, &npc.location_name) else {
-            continue;
+            let choice = prompt("Load save number, or press Enter for a new world: ")?;
+            choice
+                .parse::<usize>()
+                .ok()
+                .and_then(|index| save_files.get(index.saturating_sub(1)).cloned())
+        } else if legacy_path.exists() {
+            Some(legacy_path.clone())
+        } else {
+            None
         };
-        let faction_id = npc
-            .faction_name
-            .as_deref()
-            .and_then(|name| faction_id_by_name(state, name));
-        let id = state.world.allocate_id();
-        let mut runtime_npc = Npc::new(id, npc.name.clone(), npc.title.clone(), location_id, faction_id);
-        for memory in &npc.memory {
-            runtime_npc.memory.push(memory.clone());
-        }
-        state.npcs.push(runtime_npc);
-    }
-}
 
-fn ensure_campaign_quests(state: &mut GameState, content: &CampaignContent) {
-    migrate_completed_quest_deeds(state, content);
-    for quest in &content.quests {
-        ensure_quest(
-            state,
-            &quest.id,
-            &quest.title,
-            &quest.description,
-            &quest.location_name,
-            &quest.faction_name,
-            &quest.giver_npc_name,
-            &quest.required_item_name,
-            &quest.reward_item_name,
-        );
-    }
-}
-
-fn migrate_completed_quest_deeds(state: &mut GameState, content: &CampaignContent) {
-    let mut completed_ids = Vec::new();
-    for quest in &state.quests {
-        if !quest.completed {
-            continue;
-        }
-        let content_id = quest_identity(quest, content);
-        if !completed_ids.iter().any(|known| known == content_id) {
-            completed_ids.push(content_id.to_string());
-        }
-    }
-
-    for stored in state.world.completed_quest_ids.clone() {
-        if !completed_ids.iter().any(|known| known == &stored) {
-            if let Some(definition) = content.quests.iter().find(|entry| entry.title == stored || entry.id == stored) {
-                completed_ids.push(definition.id.clone());
-            } else {
-                completed_ids.push(stored);
-            }
-        }
-    }
-
-    state.world.completed_quest_ids = completed_ids;
-}
-
-fn ensure_quest(
-    state: &mut GameState,
-    content_id: &str,
-    title: &str,
-    description: &str,
-    location: &str,
-    faction: &str,
-    giver: &str,
-    item: &str,
-    reward_item_name: &str,
-) {
-    if state.quests.iter().any(|quest| quest.content_id == content_id || (quest.content_id.is_empty() && quest.title == title))
-        || state.world.completed_quest_ids.iter().any(|known| known == content_id || known == title)
-    {
-        return;
-    }
-    if let (Some(location_id), Some(faction_id), Some(giver_npc_id)) = (
-        location_id_by_name(&state.world, location), faction_id_by_name(state, faction), npc_id_by_name(state, giver)
-    ) {
-        let id = state.world.allocate_id();
-        let mut quest = Quest::new(id, content_id.to_string(), title, description, location_id, faction_id, giver_npc_id, item, reward_item_name);
-        // Content-driven quests begin unoffered and unfinished.
-        quest.offered = false;
-        state.quests.push(quest);
-    }
-}
-
-fn quest_identity<'a>(quest: &'a Quest, content: &'a CampaignContent) -> &'a str {
-    if !quest.content_id.is_empty() {
-        &quest.content_id
-    } else if let Some(definition) = content.quests.iter().find(|entry| entry.title == quest.title) {
-        &definition.id
-    } else {
-        &quest.title
-    }
-}
-
-fn quest_key<'a>(quest: &'a Quest) -> &'a str {
-    if quest.content_id.is_empty() {
-        &quest.title
-    } else {
-        &quest.content_id
-    }
-}
-
-
-fn faction_by_name<'a>(state: &'a GameState, name: &str) -> Option<&'a Faction> {
-    state.factions.iter().find(|faction| faction.name == name)
-}
-
-fn faction_by_id_mut<'a>(state: &'a mut GameState, faction_id: EntityId) -> Option<&'a mut Faction> {
-    state.factions.iter_mut().find(|faction| faction.id == faction_id)
-}
-
-fn faction_id_by_name(state: &GameState, name: &str) -> Option<EntityId> {
-    faction_by_name(state, name).map(|faction| faction.id)
-}
-
-fn npc_by_name<'a>(state: &'a GameState, name: &str) -> Option<&'a Npc> {
-    state.npcs.iter().find(|npc| npc.name == name)
-}
-
-fn npc_id_by_name(state: &GameState, name: &str) -> Option<EntityId> {
-    npc_by_name(state, name).map(|npc| npc.id)
-}
-
-fn npc_ids_at_location(state: &GameState, location_id: EntityId) -> Vec<EntityId> {
-    state
-        .npcs
-        .iter()
-        .filter(|npc| npc.location_id == location_id)
-        .map(|npc| npc.id)
-        .collect()
-}
-
-fn location_id_by_name(world: &crate::model::World, name: &str) -> Option<EntityId> {
-    world.locations.iter().find(|location| location.name == name).map(|location| location.id)
-}
-
-fn npc_index_by_id(state: &GameState, npc_id: EntityId) -> Option<usize> {
-    state.npcs.iter().position(|npc| npc.id == npc_id)
-}
-
-fn main_loop(state: &mut GameState, save_path: &PathBuf) -> std::io::Result<()> {
-    loop {
-        if !state.character.alive {
-            if !death_screen(state, save_path)? {
-                break;
-            }
-            state.last_announced_location_id = None;
-            continue;
-        }
-
-        render_state(state);
-        maybe_run_location_scene(state)?;
-        let menu = build_main_menu(state);
-        let labels: Vec<String> = menu.iter().map(|entry| entry.label.clone()).collect();
-        if let Some(choice) = choose_from_list("Choose an action", &labels, None)? {
-            clear_log();
-            match menu[choice].action {
-                GameAction::Travel => travel(state)?,
-                GameAction::InvestigateThreat => investigate_threat(state)?,
-                GameAction::SearchRemains => search_remains(state)?,
-                GameAction::Talk => talk(state)?,
-                GameAction::Meditate => meditate_and_save(state, save_path)?,
+        if let Some(path) = selected {
+            let choice = prompt("Load existing save? [y/N] ")?;
+            if choice.eq_ignore_ascii_case("y") {
+                match load_game(&path) {
+                    Ok(state) => {
+                        let warnings = validate_loaded_state(&state);
+                        if warnings.is_empty() {
+                            println!("Save loaded successfully.");
+                        } else {
+                            println!("Save loaded with {} warning(s):", warnings.len());
+                            for warning in warnings {
+                                println!("  - {}", warning);
+                            }
+                        }
+                        let save_path = character_save_path(&current_dir, &state.character.name);
+                        return Ok((state, save_patmeditate_and_save(state, save_path)?,
                 GameAction::QuestLog => review_quests(state),
                 GameAction::Inventory => show_inventory(state),
                 GameAction::Journal => write_note(state)?,
@@ -592,7 +348,7 @@ fn talk_to_npc(state: &mut GameState, npc_id: EntityId) -> std::io::Result<()> {
     if let Some(memory) = state.npcs[npc_index].memory.last() {
         println!("{} remembers: {}", npc_name, memory);
     }
-    if let Some(portrait) = load_campaign_content().portrait_for(&state.npcs[npc_index].name) {
+    if let Some(portrait) = state.campaign_content.as_ref().and_then(|content| content.portrait_for(&state.npcs[npc_index].name)) {
         println!("");
         println!("{}", portrait);
     }
@@ -744,7 +500,7 @@ fn complete_quest(state: &mut GameState, quest_index: usize) -> bool {
         description: format!("A token earned by completing {}.", title),
     };
     state.character.inventory.push(reward.clone());
-    notify_item_gain(&reward);
+    notify_item_gain(state, &reward);
     grant_reward_reputation(state, &reward);
     state.world.record_history(state.character.turn, format!("{} completed {}.", current_character_name, title));
     println!("
@@ -1029,7 +785,7 @@ fn investigate_threat(state: &mut GameState) -> std::io::Result<()> {
         }
     };
 
-    let (enemy_name, enemy_hp, enemy_power, trophy_name) = encounter_profile(&location.name);
+    let (enemy_name, enemy_hp, enemy_power, trophy_name) = encounter_profile(state, &location.name);
     let enemy_max_hp = enemy_hp.max(1);
     let mut encounter = CombatEncounter { enemy_name, enemy_hp, enemy_power, enemy_id: state.world.allocate_id() };
 
@@ -1056,7 +812,7 @@ fn investigate_threat(state: &mut GameState) -> std::io::Result<()> {
                 description: format!("A proof that the {} was confronted and survived.", location.name),
             };
             state.character.inventory.push(trophy.clone());
-            notify_item_gain(&trophy);
+            notify_item_gain(state, &trophy);
             update_faction_memory_for_location(state, location.id, format!("{} was cleared of danger.", location.name));
             gain_experience(state, 15);
             println!("\nCombat result: victory");
@@ -1130,9 +886,8 @@ fn investigate_threat(state: &mut GameState) -> std::io::Result<()> {
     Ok(())
 }
 
-fn encounter_profile(location_name: &str) -> (String, i32, i32, String) {
-    let content = load_campaign_content();
-    if let Some(profile) = content.encounter_for(location_name) {
+fn encounter_profile(state: &GameState, location_name: &str) -> (String, i32, i32, String) {
+    if let Some(profile) = state.campaign_content.as_ref().and_then(|content| content.encounter_for(location_name)) {
         (
             profile.enemy_name.clone(),
             profile.enemy_hp,
@@ -1160,14 +915,14 @@ fn take_combat_damage(state: &mut GameState, damage: i32, enemy_name: &str, loca
     println!("You take {} damage from {}.", damage, enemy_name);
 }
 
-fn notify_item_gain(item: &Item) {
+fn notify_item_gain(state: &GameState, item: &Item) {
     println!("You gain: {}", item.name);
     println!("{}", item.description);
-    print_item_visual(&item.name);
+    print_item_visual(state, &item.name);
 }
 
-fn print_item_visual(item_name: &str) {
-    if let Some(art) = load_campaign_content().item_art_for(item_name) {
+fn print_item_visual(state: &GameState, item_name: &str) {
+    if let Some(art) = state.campaign_content.as_ref().and_then(|content| content.item_art_for(item_name)) {
         println!("");
         println!("{}", art);
     }
@@ -1243,7 +998,7 @@ fn search_remains(state: &mut GameState) -> std::io::Result<()> {
 
         let item_names: Vec<String> = items.iter().map(|item| item.name.clone()).collect();
         for item in items {
-            notify_item_gain(&item);
+            notify_item_gain(state, &item);
             grant_reward_reputation(state, &item);
             state.character.inventory.push(item);
         }
@@ -1255,7 +1010,7 @@ fn search_remains(state: &mut GameState) -> std::io::Result<()> {
                     name: "Ashen Note".to_string(),
                     description: "A scrap of writing that might reveal something about the life that ended here.".to_string(),
                 };
-                notify_item_gain(&hidden);
+                notify_item_gain(state, &hidden);
                 state.character.inventory.push(hidden);
                 println!("Your insight uncovers something the hurried would have missed.");
             }

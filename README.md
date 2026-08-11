@@ -130,3 +130,8 @@ See "[LICENSE](./LICENSE)" for the project's license information.
 ---
 
 The world remembers what you leave behind.
+
+
+### Saves
+
+Save files are stored as gzip-compressed JSON using a character-specific filename such as `ashen_chronicle_save_Ash Walker.json.gz`. Existing `ashen_chronicle_save.json` saves from earlier versions remain readable.

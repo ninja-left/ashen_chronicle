@@ -490,3 +490,27 @@ Completed:
 - added world-inheritance coverage confirming event cooldown state persists with the inherited world
 - added content filtering tests for invalid events and duplicate event IDs
 - bumped the project version to 0.18.1
+
+
+## v0.19.0 Event & world memory integration
+
+Completed:
+- cached campaign content in runtime state so event processing no longer reloads content for every trigger
+- added structured history entries for narrative and event records, including event ID, location, and outcome data
+- recorded executed events automatically in persistent world history
+- added history-aware event conditions through prior event IDs
+- validated prior-event references and rejected invalid event definitions without preventing valid content from loading
+- rehydrated runtime campaign content after save loading without storing campaign content in save files
+- added tests for structured event history, history-based conditions, runtime content rehydration, and existing persistence behavior
+- bumped the project version to 0.19.0
+
+
+## v0.19.1 Save compression and character-specific filenames
+
+Completed:
+- save files are gzip-compressed while retaining the existing JSON payload format
+- save filenames now include a sanitized character name (`ashen_chronicle_save_<character>.json.gz`)
+- legacy uncompressed `ashen_chronicle_save.json` files remain loadable
+- startup discovers character-specific saves and preserves the selected save path
+- added tests for compressed round-tripping, legacy loading, invalid gzip data, filename sanitization, and character-specific paths
+- bumped the project version to 0.19.1

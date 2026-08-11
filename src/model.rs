@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::content::load_campaign_content;
+use crate::content::{load_campaign_content, CampaignContent};
 
 pub type EntityId = u64;
 
@@ -87,6 +87,21 @@ pub struct HistoryEntry {
     pub id: EntityId,
     pub turn: u32,
     pub text: String,
+    #[serde(default)]
+    pub entry_type: HistoryEntryType,
+    #[serde(default)]
+    pub event_id: Option<String>,
+    #[serde(default)]
+    pub location_name: Option<String>,
+    #[serde(default)]
+    pub outcome: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+pub enum HistoryEntryType {
+    #[default]
+    Narrative,
+    Event,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -223,6 +238,8 @@ pub struct GameState {
     pub quests: Vec<Quest>,
     #[serde(default)]
     pub last_announced_location_id: Option<EntityId>,
+    #[serde(skip)]
+    pub campaign_content: Option<CampaignContent>,
 }
 
 impl World {
@@ -277,6 +294,33 @@ impl World {
             id: self.allocate_id(),
             turn,
             text: text.into(),
+            entry_type: HistoryEntryType::Narrative,
+            event_id: None,
+            location_name: None,
+            outcome: None,
+        };
+        self.history.push(entry);
+    }
+
+    pub fn record_event_history(
+        &mut self,
+        turn: u32,
+        event_id: impl Into<String>,
+        location_name: impl Into<String>,
+        outcome: impl Into<String>,
+    ) {
+        let event_id = event_id.into();
+        let location_name = location_name.into();
+        let outcome = outcome.into();
+        let text = format!("Event {} occurred at {}: {}", event_id, location_name, outcome);
+        let entry = HistoryEntry {
+            id: self.allocate_id(),
+            turn,
+            text,
+            entry_type: HistoryEntryType::Event,
+            event_id: Some(event_id),
+            location_name: Some(location_name),
+            outcome: Some(outcome),
         };
         self.history.push(entry);
     }
@@ -413,13 +457,14 @@ pub fn create_new_state(world_name: &str, mode: WorldMode, character_name: Strin
         npcs: Vec::new(),
         quests: Vec::new(),
         last_announced_location_id: None,
+        campaign_content: Some(content),
     }
 }
 
 pub fn create_inherited_state(state: &GameState, character_name: String, title: String) -> GameState {
     let mut world = state.world.clone();
     world.mode = WorldMode::Inherited;
-    let content = load_campaign_content();
+    let content = state.campaign_content.clone().unwrap_or_else(load_campaign_content);
     content.seed_world(&mut world);
     let character = world.spawn_character(character_name, title);
     let turn = world.history.last().map(|entry| entry.turn).unwrap_or(0);
@@ -439,6 +484,7 @@ pub fn create_inherited_state(state: &GameState, character_name: String, title: 
         npcs: state.npcs.clone(),
         quests: Vec::new(),
         last_announced_location_id: None,
+        campaign_content: Some(content),
     }
 }
 

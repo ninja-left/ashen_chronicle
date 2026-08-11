@@ -1,4 +1,4 @@
-use crate::content::{EventConditionContent, EventContent, EventEffectContent};
+use crate::content::{CampaignContent, EventConditionContent, EventContent, EventEffectContent};
 use crate::model::{Condition, GameState};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -17,7 +17,36 @@ impl<'a> EventContext<'a> {
 }
 
 pub fn trigger_event(state: &mut GameState, context: &EventContext<'_>) -> bool {
-    let content = crate::content::load_campaign_content();
+    let Some(chosen) = ({
+        let Some(content) = state.campaign_content.as_ref() else {
+            return false;
+        };
+        let chance_roll = random_roll() % 100;
+        let candidates: Vec<&EventContent> = content
+            .events
+            .iter()
+            .filter(|event| event.trigger == context.trigger)
+            .filter(|event| matches_conditions(event.conditions.as_ref(), state, context))
+            .filter(|event| event_is_off_cooldown(state, &event.id))
+            .filter(|event| event.chance_percent.unwrap_or(100) as u64 > chance_roll)
+            .collect();
+        if candidates.is_empty() {
+            None
+        } else {
+            Some(weighted_pick(&candidates, random_roll()).unwrap_or(candidates[0]).clone())
+        }
+    }) else {
+        return false;
+    };
+    apply_event(state, &chosen, context);
+    true
+}
+
+pub fn trigger_event_from_content(
+    state: &mut GameState,
+    content: &CampaignContent,
+    context: &EventContext<'_>,
+) -> bool {
     let chance_roll = random_roll() % 100;
     let candidates: Vec<&EventContent> = content
         .events
@@ -32,8 +61,8 @@ pub fn trigger_event(state: &mut GameState, context: &EventContext<'_>) -> bool 
         return false;
     }
 
-    let chosen = weighted_pick(&candidates, random_roll()).unwrap_or(candidates[0]);
-    apply_event(state, chosen, context);
+    let chosen = weighted_pick(&candidates, random_roll()).unwrap_or(candidates[0]).clone();
+    apply_event(state, &chosen, context);
     true
 }
 
@@ -60,6 +89,11 @@ fn matches_conditions(
         && !conditions.locations.iter().any(|location| location == context.location_name)
     {
         return false;
+    }
+    if let Some(prior_event_id) = conditions.prior_event_id.as_deref() {
+        if !state.world.history.iter().any(|entry| entry.event_id.as_deref() == Some(prior_event_id)) {
+            return false;
+        }
     }
     true
 }
@@ -94,9 +128,22 @@ fn random_roll() -> u64 {
 }
 
 fn apply_event(state: &mut GameState, event: &EventContent, context: &EventContext<'_>) {
+    let mut outcomes = Vec::new();
     for effect in &event.effects {
-        apply_effect(state, effect, context);
+        apply_effect(state, effect, context, &mut outcomes);
     }
+
+    let outcome = if outcomes.is_empty() {
+        "The event leaves its mark.".to_string()
+    } else {
+        outcomes.join(" ")
+    };
+    state.world.record_event_history(
+        state.character.turn,
+        event.id.clone(),
+        context.location_name.to_string(),
+        outcome,
+    );
 
     let cooldown_turns = event.cooldown_turns.unwrap_or(0);
     if cooldown_turns > 0 {
@@ -112,22 +159,38 @@ fn apply_event(state: &mut GameState, event: &EventContent, context: &EventConte
     }
 }
 
-fn apply_effect(state: &mut GameState, effect: &EventEffectContent, context: &EventContext<'_>) {
+fn apply_effect(
+    state: &mut GameState,
+    effect: &EventEffectContent,
+    context: &EventContext<'_>,
+    outcomes: &mut Vec<String>,
+) {
     match effect {
-        EventEffectContent::Message { text } => crate::ui::line(&render_text(text, state, context)),
+        EventEffectContent::Message { text } => {
+            let rendered = render_text(text, state, context);
+            crate::ui::line(&rendered);
+            outcomes.push(rendered);
+        }
         EventEffectContent::History { text } => {
-            state.world.record_history(state.character.turn, render_text(text, state, context));
+            let rendered = render_text(text, state, context);
+            state.world.record_history(state.character.turn, rendered.clone());
+            outcomes.push(rendered);
         }
         EventEffectContent::Pause => crate::ui::pause(),
-        EventEffectContent::Heal { amount } => state.character.heal(*amount),
+        EventEffectContent::Heal { amount } => {
+            state.character.heal(*amount);
+            outcomes.push(format!("Recovered {} HP.", amount));
+        }
         EventEffectContent::Damage { amount } => {
             state.character.hp = (state.character.hp - amount).max(0);
             if state.character.hp == 0 { state.character.alive = false; }
+            outcomes.push(format!("Suffered {} damage.", amount));
         }
         EventEffectContent::AddCondition { name, remaining, penalty, bonus } => {
             let mut condition = Condition::new(name.clone(), *remaining, *penalty);
             condition.bonus = *bonus;
             state.character.conditions.push(condition);
+            outcomes.push(format!("Gained {}.", name));
         }
     }
 }
@@ -167,6 +230,40 @@ mod tests {
         assert_eq!(weighted_pick(&events, 1).unwrap().id, "second");
         assert_eq!(weighted_pick(&events, 3).unwrap().id, "second");
 
+    }
+
+    #[test]
+    fn prior_event_condition_uses_structured_history() {
+        let mut state = test_state();
+        let context = EventContext::for_travel_arrival("Ashen Gate", false, false);
+        let condition = EventConditionContent {
+            prior_event_id: Some("event.previous".into()),
+            ..Default::default()
+        };
+        assert!(!matches_conditions(Some(&condition), &state, &context));
+        state.world.record_event_history(0, "event.previous", "Ashen Gate", "The omen appeared.");
+        assert!(matches_conditions(Some(&condition), &state, &context));
+    }
+
+    #[test]
+    fn applied_event_records_structured_history() {
+        let mut state = test_state();
+        let event = EventContent {
+            id: "event.test".into(),
+            trigger: "travel_arrival".into(),
+            weight: 1,
+            chance_percent: Some(100),
+            cooldown_turns: None,
+            conditions: None,
+            effects: vec![EventEffectContent::History { text: "A sign appears.".into() }],
+        };
+        let context = EventContext::for_travel_arrival("Ashen Gate", false, false);
+        apply_event(&mut state, &event, &context);
+        let entry = state.world.history.last().expect("event history should exist");
+        assert_eq!(entry.entry_type, crate::model::HistoryEntryType::Event);
+        assert_eq!(entry.event_id.as_deref(), Some("event.test"));
+        assert_eq!(entry.location_name.as_deref(), Some("Ashen Gate"));
+        assert!(entry.outcome.as_deref().unwrap().contains("A sign appears."));
     }
 
     #[test]

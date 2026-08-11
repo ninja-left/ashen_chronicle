@@ -121,6 +121,8 @@ pub struct EventConditionContent {
     pub max_day: Option<u32>,
     #[serde(default)]
     pub locations: Vec<String>,
+    #[serde(default)]
+    pub prior_event_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -408,9 +410,11 @@ pub fn load_campaign_content_report() -> ContentLoadReport {
         .map(|entry| entry.name.as_str())
         .collect();
     let base_events = std::mem::take(&mut report.content.events);
+    let base_event_ids: HashSet<String> = base_events.iter().map(|event| event.id.clone()).collect();
     report.content.events = filter_valid_events(
         base_events,
         &base_location_names,
+        &base_event_ids,
         &HashSet::<String>::new(),
         "base content",
         &mut report.warnings,
@@ -552,9 +556,11 @@ fn merge_campaign_content(base: &mut CampaignContent, incoming: CampaignContent,
         .map(|entry| entry.name.as_str())
         .collect();
     let existing_ids: HashSet<String> = base.events.iter().map(|event| event.id.clone()).collect();
+    let incoming_event_ids: HashSet<String> = incoming.events.iter().map(|event| event.id.clone()).collect();
     let accepted_events = filter_valid_events(
         incoming.events,
         &location_names,
+        &incoming_event_ids,
         &existing_ids,
         "mod content",
         warnings,
@@ -565,19 +571,22 @@ fn merge_campaign_content(base: &mut CampaignContent, incoming: CampaignContent,
 fn filter_valid_events(
     events: Vec<EventContent>,
     location_names: &HashSet<&str>,
+    known_ids: &HashSet<String>,
     existing_ids: &HashSet<String>,
     source: &str,
     warnings: &mut Vec<String>,
 ) -> Vec<EventContent> {
     let mut accepted = Vec::with_capacity(events.len());
     let mut seen_ids = existing_ids.clone();
+    let mut pending = Vec::new();
+
     for event in events {
-        let mut issues = validate_event_content(&event, location_names);
+        let mut issues = validate_event_content(&event, location_names, known_ids);
         if !seen_ids.insert(event.id.clone()) {
             issues.push(format!("duplicate event id {}", event.id));
         }
         if issues.is_empty() {
-            accepted.push(event);
+            pending.push(event);
         } else {
             warnings.push(format!(
                 "rejecting event '{}' from {}: {}",
@@ -587,10 +596,50 @@ fn filter_valid_events(
             ));
         }
     }
+
+    loop {
+        let accepted_ids: HashSet<String> = existing_ids
+            .iter()
+            .cloned()
+            .chain(accepted.iter().map(|event: &EventContent| event.id.clone()))
+            .chain(pending.iter().map(|event| event.id.clone()))
+            .collect();
+        let mut removed_any = false;
+        let mut next_pending = Vec::with_capacity(pending.len());
+
+        for event in pending {
+            let missing_reference = event
+                .conditions
+                .as_ref()
+                .and_then(|conditions| conditions.prior_event_id.as_deref())
+                .filter(|prior_id| !accepted_ids.contains(*prior_id));
+
+            if let Some(prior_id) = missing_reference {
+                warnings.push(format!(
+                    "rejecting event '{}' from {}: prior event '{}' was rejected or unavailable",
+                    event.id, source, prior_id
+                ));
+                removed_any = true;
+            } else {
+                next_pending.push(event);
+            }
+        }
+
+        pending = next_pending;
+        if !removed_any {
+            break;
+        }
+    }
+
+    accepted.extend(pending);
     accepted
 }
 
-fn validate_event_content(event: &EventContent, location_names: &HashSet<&str>) -> Vec<String> {
+fn validate_event_content(
+    event: &EventContent,
+    location_names: &HashSet<&str>,
+    known_ids: &HashSet<String>,
+) -> Vec<String> {
     let mut issues = Vec::new();
     if event.id.trim().is_empty() {
         issues.push("empty id".to_string());
@@ -618,6 +667,11 @@ fn validate_event_content(event: &EventContent, location_names: &HashSet<&str>) 
         if let (Some(min_day), Some(max_day)) = (conditions.min_day, conditions.max_day) {
             if min_day > max_day {
                 issues.push("min_day greater than max_day".to_string());
+            }
+        }
+        if let Some(prior_event_id) = conditions.prior_event_id.as_deref() {
+            if !known_ids.contains(prior_event_id) {
+                issues.push(format!("unknown prior event id {}", prior_event_id));
             }
         }
     }
@@ -680,9 +734,11 @@ mod tests {
             ..Default::default()
         });
 
+        let known_ids = HashSet::from(["good.event".to_string(), "bad.event".to_string()]);
         let accepted = filter_valid_events(
             vec![valid_event("good.event"), invalid],
             &locations,
+            &known_ids,
             &HashSet::<String>::new(),
             "test content",
             &mut warnings,
@@ -697,14 +753,41 @@ mod tests {
     }
 
     #[test]
+    fn invalid_prior_event_reference_rejects_dependent_content() {
+        let mut warnings = Vec::new();
+        let locations = HashSet::from(["Ashen Gate"]);
+        let mut invalid = valid_event("bad.event");
+        invalid.weight = 0;
+        let mut dependent = valid_event("followup.event");
+        dependent.conditions = Some(EventConditionContent {
+            prior_event_id: Some("bad.event".to_string()),
+            ..Default::default()
+        });
+        let known_ids = HashSet::from(["bad.event".to_string(), "followup.event".to_string()]);
+        let accepted = filter_valid_events(
+            vec![invalid, dependent],
+            &locations,
+            &known_ids,
+            &HashSet::<String>::new(),
+            "test content",
+            &mut warnings,
+        );
+        assert!(accepted.is_empty());
+        assert!(warnings.iter().any(|warning| warning.contains("bad.event") && warning.contains("zero weight")));
+        assert!(warnings.iter().any(|warning| warning.contains("followup.event") && warning.contains("was rejected or unavailable")));
+    }
+
+    #[test]
     fn duplicate_event_ids_are_rejected_without_overwriting_existing_content() {
         let mut warnings = Vec::new();
         let locations = HashSet::from(["Ashen Gate"]);
         let existing = HashSet::from(["travel.event".to_string()]);
 
+        let known_ids = HashSet::from(["travel.event".to_string(), "new.event".to_string()]);
         let accepted = filter_valid_events(
             vec![valid_event("travel.event"), valid_event("new.event")],
             &locations,
+            &known_ids,
             &existing,
             "mod content",
             &mut warnings,
