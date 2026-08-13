@@ -1,4 +1,4 @@
-use crate::content::{CampaignContent, EventConditionContent, EventContent, EventEffectContent};
+use crate::content::{EventConditionContent, EventContent, EventEffectContent};
 use crate::model::{Condition, GameState};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -42,30 +42,6 @@ pub fn trigger_event(state: &mut GameState, context: &EventContext<'_>) -> bool 
     true
 }
 
-pub fn trigger_event_from_content(
-    state: &mut GameState,
-    content: &CampaignContent,
-    context: &EventContext<'_>,
-) -> bool {
-    let chance_roll = random_roll() % 100;
-    let candidates: Vec<&EventContent> = content
-        .events
-        .iter()
-        .filter(|event| event.trigger == context.trigger)
-        .filter(|event| matches_conditions(event.conditions.as_ref(), state, context))
-        .filter(|event| event_is_off_cooldown(state, &event.id))
-        .filter(|event| event.chance_percent.unwrap_or(100) as u64 > chance_roll)
-        .collect();
-
-    if candidates.is_empty() {
-        return false;
-    }
-
-    let chosen = weighted_pick(&candidates, random_roll()).unwrap_or(candidates[0]).clone();
-    apply_event(state, &chosen, context);
-    true
-}
-
 fn matches_conditions(
     conditions: Option<&EventConditionContent>,
     state: &GameState,
@@ -92,6 +68,37 @@ fn matches_conditions(
     }
     if let Some(prior_event_id) = conditions.prior_event_id.as_deref() {
         if !state.world.history.iter().any(|entry| entry.event_id.as_deref() == Some(prior_event_id)) {
+            return false;
+        }
+    }
+    if conditions.min_reputation.is_some() || conditions.max_reputation.is_some() {
+        let Some(faction_name) = conditions.faction_name.as_deref() else {
+            return false;
+        };
+        let reputation = state
+            .factions
+            .iter()
+            .find(|faction| faction.name == faction_name)
+            .map(|faction| faction.reputation)
+            .unwrap_or(0);
+        if let Some(min_reputation) = conditions.min_reputation {
+            if reputation < min_reputation {
+                return false;
+            }
+        }
+        if let Some(max_reputation) = conditions.max_reputation {
+            if reputation > max_reputation {
+                return false;
+            }
+        }
+    }
+    if let Some(item_name) = conditions.required_item_name.as_deref() {
+        if !state.character.inventory.iter().any(|item| item.name == item_name) {
+            return false;
+        }
+    }
+    if let Some(condition_name) = conditions.required_condition_name.as_deref() {
+        if !state.character.conditions.iter().any(|condition| condition.name == condition_name) {
             return false;
         }
     }
@@ -230,6 +237,50 @@ mod tests {
         assert_eq!(weighted_pick(&events, 1).unwrap().id, "second");
         assert_eq!(weighted_pick(&events, 3).unwrap().id, "second");
 
+    }
+
+    #[test]
+    fn reputation_condition_matches_current_faction_standing() {
+        let mut state = test_state();
+        state.factions.push(crate::model::Faction::new(99, "Cinder Wardens"));
+        state.factions[0].reputation = 5;
+        let context = EventContext::for_travel_arrival("Ashen Gate", false, false);
+        let condition = EventConditionContent {
+            faction_name: Some("Cinder Wardens".into()),
+            min_reputation: Some(5),
+            max_reputation: Some(10),
+            ..Default::default()
+        };
+        assert!(matches_conditions(Some(&condition), &state, &context));
+        state.factions[0].reputation = 4;
+        assert!(!matches_conditions(Some(&condition), &state, &context));
+    }
+
+    #[test]
+    fn inventory_and_condition_requirements_are_enforced() {
+        let mut state = test_state();
+        let context = EventContext::for_travel_arrival("Ashen Gate", false, false);
+        let condition = EventConditionContent {
+            required_item_name: Some("Old Key".into()),
+            required_condition_name: Some("Exhausted".into()),
+            ..Default::default()
+        };
+        assert!(!matches_conditions(Some(&condition), &state, &context));
+        state.character.inventory.push(crate::model::Item {
+            id: 77,
+            name: "Old Key".into(),
+            description: "A rusted key.".into(),
+        });
+        state.character.conditions.push(crate::model::Condition::new("Exhausted", 2, -1));
+        assert!(matches_conditions(Some(&condition), &state, &context));
+    }
+
+    #[test]
+    fn reputation_condition_defaults_missing_faction_to_ineligible() {
+        let state = test_state();
+        let context = EventContext::for_travel_arrival("Ashen Gate", false, false);
+        let condition = EventConditionContent { min_reputation: Some(1), ..Default::default() };
+        assert!(!matches_conditions(Some(&condition), &state, &context));
     }
 
     #[test]

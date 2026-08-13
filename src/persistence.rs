@@ -37,7 +37,9 @@ pub fn load_game(path: &Path) -> io::Result<GameState> {
     let json = if is_gzip(&data) {
         let mut decoder = GzDecoder::new(data.as_slice());
         let mut decoded = Vec::new();
-        decoder.read_to_end(&mut decoded)?;
+        decoder
+            .read_to_end(&mut decoded)
+            .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err.to_string()))?;
         decoded
     } else {
         // Backward compatibility for the pre-compression JSON save format.
@@ -119,7 +121,8 @@ pub fn sanitize_filename_component(name: &str) -> String {
         }
     }
     let sanitized = sanitized.trim().trim_matches('.').to_string();
-    if sanitized.is_empty() {
+    let has_safe_name_char = sanitized.chars().any(|ch| ch.is_ascii_alphanumeric());
+    if sanitized.is_empty() || !has_safe_name_char {
         "unnamed".to_string()
     } else {
         sanitized

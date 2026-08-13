@@ -19,14 +19,6 @@ macro_rules! println {
     };
 }
 
-macro_rules! eprintln {
-    () => {
-        crate::ui::diagnostic("");
-    };
-    ($($arg:tt)*) => {
-        crate::ui::diagnostic(&format!($($arg)*));
-    };
-}
 
 #[derive(Clone, Copy)]
 enum GameAction {
@@ -57,9 +49,9 @@ struct CombatEncounter {
 
 pub fn run() -> std::io::Result<()> {
     let _ui = crate::ui::init()?;
-    let (mut state, save_path) = start_or_load()?;
+    let (mut state, mut save_path) = start_or_load()?;
     bootstrap_campaign_content(&mut state);
-    main_loop(&mut state, &save_path)
+    main_loop(&mut state, &mut save_path)
 }
 
 fn start_or_load() -> std::io::Result<(GameState, PathBuf)> {
@@ -101,21 +93,237 @@ fn start_or_load() -> std::io::Result<(GameState, PathBuf)> {
                             }
                         }
                         let save_path = character_save_path(&current_dir, &state.character.name);
-                        return Ok((state, save_patmeditate_and_save(state, save_path)?,
-                GameAction::QuestLog => review_quests(state),
-                GameAction::Inventory => show_inventory(state),
-                GameAction::Journal => write_note(state)?,
-                GameAction::CharacterSheet => character_sheet(state),
-                GameAction::TestDeath => force_death(state),
-                GameAction::Quit => {
-                    if quit_screen()? {
-                        break;
+                        return Ok((state, save_path));
+                    }
+                    Err(err) => {
+                        println!("Could not load {}: {}", path.display(), err);
+                        pause();
                     }
                 }
             }
         }
     }
-    Ok(())
+
+    let state = create_from_prompts(WorldMode::New)?;
+    let save_path = character_save_path(&current_dir, &state.character.name);
+    Ok((state, save_path))
+}
+
+fn bootstrap_campaign_content(state: &mut GameState) {
+    let content = state.campaign_content.clone().unwrap_or_else(load_campaign_content);
+    content.seed_world(&mut state.world);
+    state.campaign_content = Some(content.clone());
+
+    for faction_content in &content.factions {
+        if state.factions.iter().any(|faction| faction.name == faction_content.name) {
+            continue;
+        }
+        let id = state.world.allocate_id();
+        state.factions.push(Faction::new(id, faction_content.name.clone()));
+    }
+
+    for npc_content in &content.npcs {
+        if state.npcs.iter().any(|npc| npc.name == npc_content.name) {
+            continue;
+        }
+        let Some(location_id) = state.world.location_by_name(&npc_content.location_name).map(|location| location.id) else {
+            continue;
+        };
+        let faction_id = npc_content
+            .faction_name
+            .as_deref()
+            .and_then(|name| faction_id_by_name(state, name));
+        let id = state.world.allocate_id();
+        let mut npc = Npc::new(
+            id,
+            npc_content.name.clone(),
+            npc_content.title.clone(),
+            location_id,
+            faction_id,
+        );
+        npc.memory = npc_content.memory.clone();
+        state.npcs.push(npc);
+    }
+
+    for quest_content in &content.quests {
+        if state.quests.iter().any(|quest| quest.content_id == quest_content.id) {
+            continue;
+        }
+        let Some(target_location_id) = state
+            .world
+            .location_by_name(&quest_content.location_name)
+            .map(|location| location.id)
+        else {
+            continue;
+        };
+        let Some(faction_id) = faction_id_by_name(state, &quest_content.faction_name) else {
+            continue;
+        };
+        let Some(giver_npc_id) = state
+            .npcs
+            .iter()
+            .find(|npc| npc.name == quest_content.giver_npc_name)
+            .map(|npc| npc.id)
+        else {
+            continue;
+        };
+        let id = state.world.allocate_id();
+        state.quests.push(Quest::new(
+            id,
+            quest_content.id.clone(),
+            quest_content.title.clone(),
+            quest_content.description.clone(),
+            target_location_id,
+            faction_id,
+            giver_npc_id,
+            quest_content.required_item_name.clone(),
+            quest_content.reward_item_name.clone(),
+        ));
+    }
+}
+
+fn validate_loaded_state(state: &GameState) -> Vec<String> {
+    let mut warnings = Vec::new();
+    if !state.character.alive && state.character.hp > 0 {
+        warnings.push("character is marked dead while still having HP".to_string());
+    }
+    if state.world.location_by_id(state.character.location_id).is_none() {
+        warnings.push(format!("character references unknown location id {}", state.character.location_id));
+    }
+    for npc in &state.npcs {
+        if state.world.location_by_id(npc.location_id).is_none() {
+            warnings.push(format!("npc {} references unknown location id {}", npc.name, npc.location_id));
+        }
+        if let Some(faction_id) = npc.faction_id {
+            if !state.factions.iter().any(|faction| faction.id == faction_id) {
+                warnings.push(format!("npc {} references unknown faction id {}", npc.name, faction_id));
+            }
+        }
+    }
+    for quest in &state.quests {
+        if state.world.location_by_id(quest.target_location_id).is_none() {
+            warnings.push(format!("quest {} references unknown target location id {}", quest.title, quest.target_location_id));
+        }
+        if !state.factions.iter().any(|faction| faction.id == quest.faction_id) {
+            warnings.push(format!("quest {} references unknown faction id {}", quest.title, quest.faction_id));
+        }
+        if !state.npcs.iter().any(|npc| npc.id == quest.giver_npc_id) {
+            warnings.push(format!("quest {} references unknown giver npc id {}", quest.title, quest.giver_npc_id));
+        }
+    }
+    warnings
+}
+
+fn main_loop(state: &mut GameState, save_path: &mut PathBuf) -> std::io::Result<()> {
+    loop {
+        if !state.character.alive {
+            clear_log();
+            if !death_screen(state, save_path)? {
+                return Ok(());
+            }
+            *save_path = character_save_path(PathBuf::from(".").as_path(), &state.character.name);
+            bootstrap_campaign_content(state);
+            continue;
+        }
+
+        render_state(state);
+        maybe_run_location_scene(state)?;
+        let menu = build_main_menu(state);
+        let labels: Vec<String> = menu.iter().map(|entry| entry.label.clone()).collect();
+        let Some(choice) = choose_from_list("What will you do?", &labels, None)? else {
+            continue;
+        };
+
+        clear_log();
+        let result = match menu[choice].action {
+            GameAction::Travel => travel(state),
+            GameAction::InvestigateThreat => investigate_threat(state),
+            GameAction::SearchRemains => search_remains(state),
+            GameAction::Talk => talk(state),
+            GameAction::Meditate => meditate_and_save(state, save_path),
+            GameAction::QuestLog => {
+                review_quests(state);
+                Ok(())
+            }
+            GameAction::Inventory => {
+                show_inventory(state);
+                Ok(())
+            }
+            GameAction::Journal => write_note(state),
+            GameAction::CharacterSheet => {
+                character_sheet(state);
+                Ok(())
+            }
+            GameAction::TestDeath => {
+                force_death(state);
+                Ok(())
+            }
+            GameAction::Quit => {
+                if quit_screen()? {
+                    save_game(save_path, state)?;
+                    println!("Saved to {}", save_path.display());
+                    return Ok(());
+                }
+                Ok(())
+            }
+        };
+        result?;
+    }
+}
+
+fn npc_ids_at_location(state: &GameState, location_id: EntityId) -> Vec<EntityId> {
+    state
+        .npcs
+        .iter()
+        .filter(|npc| npc.location_id == location_id)
+        .map(|npc| npc.id)
+        .collect()
+}
+
+fn npc_index_by_id(state: &GameState, npc_id: EntityId) -> Option<usize> {
+    state.npcs.iter().position(|npc| npc.id == npc_id)
+}
+
+fn quest_key(quest: &Quest) -> String {
+    if quest.content_id.is_empty() {
+        format!("legacy.quest.{}", quest.id)
+    } else {
+        quest.content_id.clone()
+    }
+}
+
+fn faction_id_by_name(state: &GameState, faction_name: &str) -> Option<EntityId> {
+    state
+        .factions
+        .iter()
+        .find(|faction| faction.name == faction_name)
+        .map(|faction| faction.id)
+}
+
+fn faction_by_id_mut(state: &mut GameState, faction_id: EntityId) -> Option<&mut Faction> {
+    state.factions.iter_mut().find(|faction| faction.id == faction_id)
+}
+
+fn create_from_prompts(mode: WorldMode) -> std::io::Result<GameState> {
+    let world_name = if matches!(&mode, WorldMode::New) {
+        let input = prompt("Name the world [The Ashen Crown]: ")?;
+        if input.is_empty() { "The Ashen Crown".to_string() } else { input }
+    } else {
+        "The Ashen Crown".to_string()
+    };
+    let character_name = prompt("Character name: ")?;
+    let title = prompt("Character title [Ash Walker]: ")?;
+    let character_name = if character_name.is_empty() { "Wanderer".to_string() } else { character_name };
+    let title = if title.is_empty() { "Ash Walker".to_string() } else { title };
+    Ok(create_new_state(&world_name, mode, character_name, title))
+}
+
+fn create_inherited_from_world(state: &GameState) -> std::io::Result<GameState> {
+    let character_name = prompt("New character name: ")?;
+    let title = prompt("New character title [Ash Walker]: ")?;
+    let character_name = if character_name.is_empty() { "Heir".to_string() } else { character_name };
+    let title = if title.is_empty() { "Ash Walker".to_string() } else { title };
+    Ok(create_inherited_state(state, character_name, title))
 }
 
 fn quit_screen() -> std::io::Result<bool> {
@@ -194,25 +402,26 @@ fn quit_screen() -> std::io::Result<bool> {
         }
     }
 }
+
 fn build_main_menu(state: &GameState) -> Vec<MenuEntry> {
     let mut menu = vec![
         MenuEntry { label: "Travel".to_string(), action: GameAction::Travel },
-        MenuEntry { label: "Talk".to_string(), action: GameAction::Talk },
         MenuEntry { label: "Meditate".to_string(), action: GameAction::Meditate },
-        MenuEntry { label: "Quest log".to_string(), action: GameAction::QuestLog },
-        MenuEntry { label: "View inventory".to_string(), action: GameAction::Inventory },
-        MenuEntry { label: "Write journal note".to_string(), action: GameAction::Journal },
         MenuEntry { label: "Character sheet".to_string(), action: GameAction::CharacterSheet },
-        MenuEntry { label: "Test the death flow".to_string(), action: GameAction::TestDeath },
+        MenuEntry { label: "View inventory".to_string(), action: GameAction::Inventory },
+        MenuEntry { label: "Quest log".to_string(), action: GameAction::QuestLog },
+        MenuEntry { label: "Write journal note".to_string(), action: GameAction::Journal },
+        MenuEntry { label: "Talk".to_string(), action: GameAction::Talk },
         MenuEntry { label: "Quit".to_string(), action: GameAction::Quit },
+        MenuEntry { label: "Test the death flow".to_string(), action: GameAction::TestDeath },
     ];
 
     if state.threat.active {
-        menu.insert(1, MenuEntry { label: "Investigate".to_string(), action: GameAction::InvestigateThreat });
+        menu.insert(6, MenuEntry { label: "Investigate".to_string(), action: GameAction::InvestigateThreat });
     }
 
     if has_unscavenged_remains_at_location(state) {
-        let insert_at = if state.threat.active { 2 } else { 1 };
+        let insert_at = if state.threat.active { 7 } else { 6 };
         menu.insert(insert_at, MenuEntry { label: "Search remains".to_string(), action: GameAction::SearchRemains });
     }
 
@@ -262,6 +471,7 @@ fn render_state(state: &GameState) {
     };
     crate::ui::set_dashboard(dashboard);
 }
+
 fn maybe_run_location_scene(state: &mut GameState) -> std::io::Result<()> {
     let location_id = state.character.location_id;
     if state.last_announced_location_id == Some(location_id) {
@@ -381,7 +591,7 @@ fn talk_to_npc(state: &mut GameState, npc_id: EntityId) -> std::io::Result<()> {
                     let (quest_key, title, description, faction_id, offered, completed) = {
                         let quest = &state.quests[quest_index];
                         (
-                            quest_key(quest).to_string(),
+                            quest_key(quest),
                             quest.title.clone(),
                             quest.description.clone(),
                             quest.faction_id,
@@ -418,7 +628,7 @@ fn talk_to_npc(state: &mut GameState, npc_id: EntityId) -> std::io::Result<()> {
                     let (quest_key, _title, offered, completed, required_item_name) = {
                         let quest = &state.quests[quest_index];
                         (
-                            quest_key(quest).to_string(),
+                            quest_key(quest),
                             quest.title.clone(),
                             quest.offered,
                             quest.completed,
@@ -462,7 +672,7 @@ fn complete_quest(state: &mut GameState, quest_index: usize) -> bool {
     let (quest_key, title, required_item_name, faction_id) = {
         let quest = &state.quests[quest_index];
         (
-            quest_key(quest).to_string(),
+            quest_key(quest),
             quest.title.clone(),
             quest.required_item_name.clone(),
             quest.faction_id,
@@ -564,7 +774,6 @@ fn corpse_label(corpse: &Corpse) -> String {
         format!("{} the {}", corpse.former_name, corpse.former_title)
     }
 }
-
 
 fn time_display(points: u32, day: u32) -> String {
     const PORTIONS: [&str; 12] = ["Deep Night", "Before Dawn", "Dawn", "Morning", "Late Morning", "High Sun", "Afternoon", "Late Afternoon", "Dusk", "Evening", "Night", "Midnight"];

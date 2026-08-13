@@ -514,3 +514,51 @@ Completed:
 - startup discovers character-specific saves and preserves the selected save path
 - added tests for compressed round-tripping, legacy loading, invalid gzip data, filename sanitization, and character-specific paths
 - bumped the project version to 0.19.1
+
+
+## Phase 13: Event branching and state-aware content
+
+Goal: make data-driven events respond to the player's accumulated state so content can branch without hardcoded gameplay branches.
+
+Work items:
+- reputation-aware event conditions
+- inventory-aware event conditions
+- character-condition-aware event conditions
+- cross-content event references for mods
+- validation and focused tests for the new condition types
+- content examples that demonstrate state-aware event branching
+
+Status: complete.
+
+## v0.20.0 State-aware event conditions
+
+Completed:
+- added faction reputation conditions with minimum and maximum reputation thresholds
+- added required inventory-item conditions
+- added required active-condition checks
+- validated referenced factions and invalid reputation ranges during content loading
+- kept event conditions backward-compatible through serde defaults
+- fixed mod event validation so a mod event may safely reference an existing base event in `prior_event_id` conditions
+- added focused runtime and content-validation tests for reputation, inventory, condition, and cross-content event requirements
+- added the `event.market-recognition` campaign event to demonstrate reputation-gated narrative content
+- bumped the project version to 0.20.0
+
+
+## v0.20.1 Test-failure repair and runtime flow restoration
+
+Completed:
+- restored the startup/load control flow that was accidentally truncated in v0.20.0
+- restored campaign bootstrap for factions, NPCs, and quests using stable content references
+- restored main-menu dispatch, loaded-state validation, NPC/faction/quest lookup helpers, and character creation/inheritance prompts
+- fixed save-path handling when a character dies and a new character inherits or starts a new world
+- removed the unused diagnostic macro and resolved the warnings reported by the v0.20.0 test run
+- bumped the project version to 0.20.1
+
+
+## v0.20.2 Persistence test fixes
+
+Completed:
+- normalized gzip decompression failures to `io::ErrorKind::InvalidData` so malformed compressed saves have a stable public error category
+- treated filename components containing no alphanumeric characters as `unnamed` after sanitization
+- removed two unused runtime helpers reported by the test build as dead code
+- bumped the project version to 0.20.2

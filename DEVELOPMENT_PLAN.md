@@ -229,3 +229,8 @@ If the architecture is right early, adding items, images, quests, mods, and new 
 ## Phase 12: Data-driven events
 
 World incidents should be authored as content rather than hardcoded branches. Events use stable IDs and named triggers, then pass through reusable condition checks, chance/weight selection, effects, and persistent cooldowns. This system is intentionally extensible so future versions can add location incidents, timed world changes, quest hooks, combat-adjacent events, and branching narrative without expanding the main game loop.
+
+
+## 23) State-aware event branching
+
+The data-driven event layer should be able to react to meaningful current state without hardcoded branches in the gameplay loop. Event conditions may inspect persistent faction reputation, required inventory items, active character conditions, location/time/danger state, and prior event history. Content validation must reject impossible references or contradictory ranges before runtime. Mod events may reference previously loaded base events when building history-dependent chains.

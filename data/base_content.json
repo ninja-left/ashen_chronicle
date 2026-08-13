@@ -374,6 +374,30 @@
           "type": "pause"
         }
       ]
+    },
+    {
+      "id": "event.market-recognition",
+      "trigger": "travel_arrival",
+      "weight": 1,
+      "chance_percent": 100,
+      "cooldown_turns": 4,
+      "conditions": {
+        "locations": [
+          "Hollow Market"
+        ],
+        "faction_name": "Hollow Market Kin",
+        "min_reputation": 5
+      },
+      "effects": [
+        {
+          "type": "message",
+          "text": "The Hollow Market recognizes {character} as someone who has paid their dues."
+        },
+        {
+          "type": "history",
+          "text": "The market remembers {character} as a trusted hand."
+        }
+      ]
     }
   ]
 }

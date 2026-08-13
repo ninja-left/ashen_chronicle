@@ -265,10 +265,6 @@ impl World {
         id
     }
 
-    pub fn region_by_id(&self, id: EntityId) -> Option<&Region> {
-        self.regions.iter().find(|region| region.id == id)
-    }
-
     pub fn location_by_id(&self, id: EntityId) -> Option<&Location> {
         self.locations.iter().find(|location| location.id == id)
     }
