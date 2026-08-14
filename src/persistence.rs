@@ -21,7 +21,8 @@ pub fn save_game(path: &Path, state: &GameState) -> io::Result<()> {
         save_file_version: SAVE_FILE_VERSION,
         game: state.clone(),
     };
-    let json = serde_json::to_vec_pretty(&payload).map_err(|err| io::Error::other(err.to_string()))?;
+    let json =
+        serde_json::to_vec_pretty(&payload).map_err(|err| io::Error::other(err.to_string()))?;
 
     let file = File::create(path)?;
     let mut encoder = GzEncoder::new(file, Compression::default());
