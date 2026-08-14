@@ -149,11 +149,18 @@ pub struct Condition {
 
 impl Condition {
     pub fn new(name: impl Into<String>, remaining: u32, penalty: i32) -> Self {
-        Self { name: name.into(), remaining, penalty, bonus: 0 }
+        Self {
+            name: name.into(),
+            remaining,
+            penalty,
+            bonus: 0,
+        }
     }
 }
 
-fn default_character_level() -> u32 { 1 }
+fn default_character_level() -> u32 {
+    1
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Item {
@@ -278,11 +285,15 @@ impl World {
     }
 
     pub fn location_by_name_mut(&mut self, name: &str) -> Option<&mut Location> {
-        self.locations.iter_mut().find(|location| location.name == name)
+        self.locations
+            .iter_mut()
+            .find(|location| location.name == name)
     }
 
     pub fn location_is_dangerous(&self, id: EntityId) -> bool {
-        self.location_by_id(id).map(|location| location.dangerous).unwrap_or(false)
+        self.location_by_id(id)
+            .map(|location| location.dangerous)
+            .unwrap_or(false)
     }
 
     pub fn record_history(&mut self, turn: u32, text: impl Into<String>) {
@@ -308,7 +319,10 @@ impl World {
         let event_id = event_id.into();
         let location_name = location_name.into();
         let outcome = outcome.into();
-        let text = format!("Event {} occurred at {}: {}", event_id, location_name, outcome);
+        let text = format!(
+            "Event {} occurred at {}: {}",
+            event_id, location_name, outcome
+        );
         let entry = HistoryEntry {
             id: self.allocate_id(),
             turn,
@@ -342,7 +356,11 @@ impl Character {
             turn: 0,
             experience: 0,
             level: 1,
-            attributes: Attributes { might: 1, insight: 1, endurance: 1 },
+            attributes: Attributes {
+                might: 1,
+                insight: 1,
+                endurance: 1,
+            },
             conditions: Vec::new(),
             notes: vec!["Born into ash, with no past worth keeping.".to_string()],
         }
@@ -361,7 +379,12 @@ impl Character {
     }
 
     pub fn effective_endurance(&self) -> i32 {
-        self.attributes.endurance + self.conditions.iter().map(|condition| condition.bonus).sum::<i32>()
+        self.attributes.endurance
+            + self
+                .conditions
+                .iter()
+                .map(|condition| condition.bonus)
+                .sum::<i32>()
     }
 
     pub fn heal(&mut self, amount: i32) {
@@ -434,16 +457,28 @@ impl Quest {
 }
 
 fn condition_penalty(conditions: &[Condition], name: &str) -> i32 {
-    conditions.iter().filter(|condition| condition.name == name).map(|condition| condition.penalty).sum()
+    conditions
+        .iter()
+        .filter(|condition| condition.name == name)
+        .map(|condition| condition.penalty)
+        .sum()
 }
 
-pub fn create_new_state(world_name: &str, mode: WorldMode, character_name: String, title: String) -> GameState {
+pub fn create_new_state(
+    world_name: &str,
+    mode: WorldMode,
+    character_name: String,
+    title: String,
+) -> GameState {
     let mut world = World::new(world_name, mode);
     let content = load_campaign_content();
     content.seed_world(&mut world);
     world.record_history(0, "A new world stirs beneath ash and ruin.");
     let character = world.spawn_character(character_name, title);
-    world.record_history(0, format!("{} entered the world.", character.display_name()));
+    world.record_history(
+        0,
+        format!("{} entered the world.", character.display_name()),
+    );
     GameState {
         world,
         character,
@@ -457,14 +492,24 @@ pub fn create_new_state(world_name: &str, mode: WorldMode, character_name: Strin
     }
 }
 
-pub fn create_inherited_state(state: &GameState, character_name: String, title: String) -> GameState {
+pub fn create_inherited_state(
+    state: &GameState,
+    character_name: String,
+    title: String,
+) -> GameState {
     let mut world = state.world.clone();
     world.mode = WorldMode::Inherited;
-    let content = state.campaign_content.clone().unwrap_or_else(load_campaign_content);
+    let content = state
+        .campaign_content
+        .clone()
+        .unwrap_or_else(load_campaign_content);
     content.seed_world(&mut world);
     let character = world.spawn_character(character_name, title);
     let turn = world.history.last().map(|entry| entry.turn).unwrap_or(0);
-    world.record_history(turn, format!("{} inherited the world.", character.display_name()));
+    world.record_history(
+        turn,
+        format!("{} inherited the world.", character.display_name()),
+    );
     let mut inherited_factions = state.factions.clone();
     for faction in &mut inherited_factions {
         // Reputation belongs to the character, not the world. Memories remain
@@ -501,7 +546,9 @@ mod tests {
             event_id: "travel.ruined-road".to_string(),
             ready_at_turn: 14,
         });
-        state.world.record_history(9, "A life ended here.".to_string());
+        state
+            .world
+            .record_history(9, "A life ended here.".to_string());
 
         let inherited = create_inherited_state(
             &state,

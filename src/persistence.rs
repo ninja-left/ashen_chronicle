@@ -22,7 +22,7 @@ pub fn save_game(path: &Path, state: &GameState) -> io::Result<()> {
         game: state.clone(),
     };
     let json = serde_json::to_vec_pretty(&payload)
-        .map_err(|err| io::Error::new(io::ErrorKind::Other, err.to_string()))?;
+        .map_err(|err| io::Error::other(err.to_string()))?;
 
     let file = File::create(path)?;
     let mut encoder = GzEncoder::new(file, Compression::default());
@@ -203,7 +203,10 @@ mod tests {
 
     #[test]
     fn sanitize_filename_component_is_filesystem_safe() {
-        assert_eq!(sanitize_filename_component("Ash/Walker:Night"), "Ash_Walker_Night");
+        assert_eq!(
+            sanitize_filename_component("Ash/Walker:Night"),
+            "Ash_Walker_Night"
+        );
         assert_eq!(sanitize_filename_component("..."), "unnamed");
         assert_eq!(sanitize_filename_component("  Geralt  "), "Geralt");
     }
@@ -211,7 +214,10 @@ mod tests {
     #[test]
     fn character_save_path_appends_character_name() {
         let path = character_save_path(Path::new("."), "Ash Walker");
-        assert_eq!(path, PathBuf::from("./ashen_chronicle_save_Ash Walker.json.gz"));
+        assert_eq!(
+            path,
+            PathBuf::from("./ashen_chronicle_save_Ash Walker.json.gz")
+        );
     }
 
     #[test]

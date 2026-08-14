@@ -61,14 +61,22 @@ jobs:
             exit 1
           fi
 
+      - name: Archive test log
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          tar caf test-log.tar.xz test.log
+
       - name: Upload test log
         if: always()
         uses: actions/upload-artifact@v7.0.1
         with:
-          name: test-log-${{ github.run_id }}
-          path: test.log
+          name: test-log-${{ github.run_id }}.tar.xz
+          path: test-log.tar.xz
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 7
+          archive: false
 
   release:
     name: Build and Release
@@ -144,14 +152,22 @@ jobs:
 
           echo "archive=$archive" >> build.log
 
+      - name: Archive build log
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          tar caf build-log.tar.xz build.log
+
       - name: Upload build log
         if: always()
         uses: actions/upload-artifact@v7.0.1
         with:
-          name: build-log-${{ github.run_id }}
-          path: build.log
+          name: build-log-${{ github.run_id }}.tar.xz
+          path: build-log.tar.xz
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 7
+          archive: false
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v3.0.2

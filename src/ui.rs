@@ -4,8 +4,8 @@ use crossterm::execute;
 use crossterm::terminal::{self, EnterAlternateScreen, LeaveAlternateScreen};
 use ratatui::backend::CrosstermBackend;
 use ratatui::layout::{Constraint, Direction, Layout, Rect, Spacing};
-use ratatui::symbols::merge::MergeStrategy;
 use ratatui::prelude::{Color, Modifier, Style};
+use ratatui::symbols::merge::MergeStrategy;
 use ratatui::widgets::{Block, Borders, Clear, LineGauge, Paragraph, Wrap};
 use ratatui::Terminal;
 use std::io::{self, Stdout, Write};
@@ -28,24 +28,13 @@ pub struct Dashboard {
     pub action_hint: Option<String>,
 }
 
+#[derive(Default)]
 struct UiRuntime {
     dashboard: Dashboard,
     location_scene: Vec<String>,
     log: Vec<String>,
     initialized: bool,
     terminal: Option<Terminal<CrosstermBackend<Stdout>>>,
-}
-
-impl Default for UiRuntime {
-    fn default() -> Self {
-        Self {
-            dashboard: Dashboard::default(),
-            location_scene: Vec::new(),
-            log: Vec::new(),
-            initialized: false,
-            terminal: None,
-        }
-    }
 }
 
 static UI: OnceLock<Mutex<UiRuntime>> = OnceLock::new();
@@ -235,7 +224,12 @@ pub fn choose_from_list(
 
     loop {
         let (term_width, term_height) = terminal::size().unwrap_or((100, 40));
-        let compact = is_compact_area(Rect { x: 0, y: 0, width: term_width, height: term_height });
+        let compact = is_compact_area(Rect {
+            x: 0,
+            y: 0,
+            width: term_width,
+            height: term_height,
+        });
         let popup_height = if compact { 42 } else { 34 };
         let inner_height = ((term_height as u32 * popup_height as u32) / 100) as usize;
         let mut available_option_rows = inner_height.saturating_sub(6);
@@ -382,7 +376,10 @@ fn wait_for_key(message: &str) -> io::Result<()> {
 
 fn read_key() -> io::Result<KeyCode> {
     loop {
-        if let Event::Key(KeyEvent { code, modifiers, .. }) = event::read()? {
+        if let Event::Key(KeyEvent {
+            code, modifiers, ..
+        }) = event::read()?
+        {
             if modifiers.contains(KeyModifiers::CONTROL) && matches!(code, KeyCode::Char('c')) {
                 return Ok(KeyCode::Esc);
             }
@@ -417,7 +414,11 @@ fn trim_log(log: &mut Vec<String>) {
     }
 }
 
-fn render_locked(state: &mut UiRuntime, prompt: Option<&[String]>, notice: Option<&str>) -> io::Result<()> {
+fn render_locked(
+    state: &mut UiRuntime,
+    prompt: Option<&[String]>,
+    notice: Option<&str>,
+) -> io::Result<()> {
     let dashboard = state.dashboard.clone();
     let scene = state.location_scene.clone();
     let log = state.log.clone();
@@ -469,7 +470,13 @@ fn draw_dashboard(
             .spacing(Spacing::Overlap(1))
             .split(root[0]);
         render_status_panel(frame, body[0], dashboard, compact);
-        render_panel(frame, body[1], "Location", location_lines(dashboard, scene), compact);
+        render_panel(
+            frame,
+            body[1],
+            "Location",
+            location_lines(dashboard, scene),
+            compact,
+        );
         render_log(frame, body[2], log, compact);
     } else {
         let body = Layout::default()
@@ -487,7 +494,10 @@ fn draw_dashboard(
             frame,
             left[1],
             "Controls",
-            vec![dashboard.action_hint.clone().unwrap_or_else(|| "Use arrows, Enter, and Esc.".to_string())],
+            vec![dashboard
+                .action_hint
+                .clone()
+                .unwrap_or_else(|| "Use arrows, Enter, and Esc.".to_string())],
             compact,
         );
         let right = Layout::default()
@@ -495,7 +505,13 @@ fn draw_dashboard(
             .constraints([Constraint::Length(16), Constraint::Min(4)])
             .spacing(Spacing::Overlap(1))
             .split(body[1]);
-        render_panel(frame, right[0], "Location", location_lines(dashboard, scene), compact);
+        render_panel(
+            frame,
+            right[0],
+            "Location",
+            location_lines(dashboard, scene),
+            compact,
+        );
         render_log(frame, right[1], log, compact);
     }
 
@@ -506,8 +522,14 @@ fn draw_dashboard(
     }
 }
 
-fn render_status_panel(frame: &mut ratatui::Frame<'_>, area: Rect, dashboard: &Dashboard, compact: bool) {
-    let head_title = format!("The Ashen Chronicle v{}", env!("CARGO_PKG_VERSION"));                                                                 let head_title: &str = head_title.as_str();
+fn render_status_panel(
+    frame: &mut ratatui::Frame<'_>,
+    area: Rect,
+    dashboard: &Dashboard,
+    compact: bool,
+) {
+    let head_title = format!("The Ashen Chronicle v{}", env!("CARGO_PKG_VERSION"));
+    let head_title: &str = head_title.as_str();
 
     let block = Block::default()
         .borders(Borders::ALL)
@@ -533,7 +555,10 @@ fn render_status_panel(frame: &mut ratatui::Frame<'_>, area: Rect, dashboard: &D
 
     let gauge_rows = 1 + usize::from(dashboard.enemy_name.is_some());
     let text_height = inner.height.saturating_sub(gauge_rows as u16);
-    let text_area = Rect { height: text_height, ..inner };
+    let text_area = Rect {
+        height: text_height,
+        ..inner
+    };
     if text_height > 0 {
         let paragraph = Paragraph::new(lines.join("\n")).wrap(Wrap { trim: true });
         frame.render_widget(paragraph, text_area);
@@ -545,7 +570,15 @@ fn render_status_panel(frame: &mut ratatui::Frame<'_>, area: Rect, dashboard: &D
         width: inner.width,
         height: 1,
     };
-    render_health_gauge(frame, gauge_area, "HP", dashboard.hp, dashboard.max_hp, Color::Red, Color::DarkGray);
+    render_health_gauge(
+        frame,
+        gauge_area,
+        "HP",
+        dashboard.hp,
+        dashboard.max_hp,
+        Color::Red,
+        Color::DarkGray,
+    );
 
     if let (Some(enemy_name), Some(enemy_hp), Some(enemy_max_hp)) = (
         dashboard.enemy_name.as_deref(),
@@ -554,7 +587,15 @@ fn render_status_panel(frame: &mut ratatui::Frame<'_>, area: Rect, dashboard: &D
     ) {
         gauge_area.y += 1;
         let title = format!("{} HP", enemy_name);
-        render_health_gauge(frame, gauge_area, &title, enemy_hp, enemy_max_hp, Color::Red, Color::DarkGray);
+        render_health_gauge(
+            frame,
+            gauge_area,
+            &title,
+            enemy_hp,
+            enemy_max_hp,
+            Color::Red,
+            Color::DarkGray,
+        );
     }
 }
 
@@ -583,10 +624,26 @@ fn render_health_gauge(
     frame.render_widget(gauge, area);
 }
 
-fn render_panel(frame: &mut ratatui::Frame<'_>, area: Rect, title: &str, lines: Vec<String>, compact: bool) {
-    let content = if lines.is_empty() { vec![String::new()] } else { lines };
+fn render_panel(
+    frame: &mut ratatui::Frame<'_>,
+    area: Rect,
+    title: &str,
+    lines: Vec<String>,
+    compact: bool,
+) {
+    let content = if lines.is_empty() {
+        vec![String::new()]
+    } else {
+        lines
+    };
     let paragraph = Paragraph::new(content.join("\n"))
-        .block(Block::default().borders(Borders::ALL).title(title).style(border_style(compact)).merge_borders(MergeStrategy::Exact))
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(title)
+                .style(border_style(compact))
+                .merge_borders(MergeStrategy::Exact),
+        )
         .wrap(Wrap { trim: true });
     frame.render_widget(paragraph, area);
 }
@@ -599,15 +656,33 @@ fn render_log(frame: &mut ratatui::Frame<'_>, area: Rect, log: &[String], compac
         tail_lines(log, visible_lines.max(1))
     };
     let paragraph = Paragraph::new(content.join("\n"))
-        .block(Block::default().borders(Borders::ALL).title("Journal").style(border_style(compact)).merge_borders(MergeStrategy::Exact))
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("Journal")
+                .style(border_style(compact))
+                .merge_borders(MergeStrategy::Exact),
+        )
         .wrap(Wrap { trim: true });
     frame.render_widget(paragraph, area);
 }
 
-fn render_footer(frame: &mut ratatui::Frame<'_>, area: Rect, dashboard: &Dashboard, compact: bool, notice: Option<&str>) {
+fn render_footer(
+    frame: &mut ratatui::Frame<'_>,
+    area: Rect,
+    dashboard: &Dashboard,
+    compact: bool,
+    notice: Option<&str>,
+) {
     let paragraph = if let Some(notice) = notice {
         Paragraph::new(notice.to_string())
-            .block(Block::default().borders(Borders::ALL).title("Actions").style(border_style(compact)).merge_borders(MergeStrategy::Exact))
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title("Actions")
+                    .style(border_style(compact))
+                    .merge_borders(MergeStrategy::Exact),
+            )
             .wrap(Wrap { trim: true })
     } else {
         let hint = dashboard
@@ -615,15 +690,32 @@ fn render_footer(frame: &mut ratatui::Frame<'_>, area: Rect, dashboard: &Dashboa
             .clone()
             .unwrap_or_else(|| "Use arrows, Enter, and Esc.".to_string());
         Paragraph::new(hint)
-            .block(Block::default().borders(Borders::ALL).title("Controls").style(border_style(compact)).merge_borders(MergeStrategy::Exact))
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title("Controls")
+                    .style(border_style(compact))
+                    .merge_borders(MergeStrategy::Exact),
+            )
             .wrap(Wrap { trim: true })
     };
     frame.render_widget(paragraph, area);
 }
 
-fn render_prompt_panel(frame: &mut ratatui::Frame<'_>, area: Rect, prompt_lines: &[String], compact: bool) {
+fn render_prompt_panel(
+    frame: &mut ratatui::Frame<'_>,
+    area: Rect,
+    prompt_lines: &[String],
+    compact: bool,
+) {
     let paragraph = Paragraph::new(prompt_lines.join("\n"))
-        .block(Block::default().borders(Borders::ALL).title("Actions").style(border_style(compact)).merge_borders(MergeStrategy::Exact))
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("Actions")
+                .style(border_style(compact))
+                .merge_borders(MergeStrategy::Exact),
+        )
         .wrap(Wrap { trim: true });
     frame.render_widget(paragraph, area);
 }
@@ -656,7 +748,8 @@ fn border_style(compact: bool) -> Style {
     if compact {
         Style::default().fg(Color::Gray)
     } else {
-        Style::default().fg(Color::White).add_modifier(Modifier::BOLD)
+        Style::default()
+            .fg(Color::White)
+            .add_modifier(Modifier::BOLD)
     }
 }
-

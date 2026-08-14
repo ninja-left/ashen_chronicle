@@ -138,12 +138,27 @@ pub struct EventConditionContent {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum EventEffectContent {
-    Message { text: String },
-    History { text: String },
+    Message {
+        text: String,
+    },
+    History {
+        text: String,
+    },
     Pause,
-    Heal { amount: i32 },
-    Damage { amount: i32 },
-    AddCondition { name: String, remaining: u32, #[serde(default)] penalty: i32, #[serde(default)] bonus: i32 },
+    Heal {
+        amount: i32,
+    },
+    Damage {
+        amount: i32,
+    },
+    AddCondition {
+        name: String,
+        remaining: u32,
+        #[serde(default)]
+        penalty: i32,
+        #[serde(default)]
+        bonus: i32,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -192,54 +207,113 @@ impl CampaignContent {
     pub fn validate(&self) -> Vec<String> {
         let mut issues = Vec::new();
         if self.version != 1 {
-            issues.push(format!("content version {} is not recognized", self.version));
+            issues.push(format!(
+                "content version {} is not recognized",
+                self.version
+            ));
         }
 
-        validate_unique_ids("location", self.world.locations.iter().map(|entry| entry.id.as_str()), &mut issues);
-        validate_unique_ids("faction", self.factions.iter().map(|entry| entry.id.as_str()), &mut issues);
-        validate_unique_ids("npc", self.npcs.iter().map(|entry| entry.id.as_str()), &mut issues);
-        validate_unique_ids("quest", self.quests.iter().map(|entry| entry.id.as_str()), &mut issues);
-        validate_unique_ids("item visual", self.item_visuals.iter().map(|entry| entry.item_name.as_str()), &mut issues);
-        validate_unique_ids("event", self.events.iter().map(|entry| entry.id.as_str()), &mut issues);
+        validate_unique_ids(
+            "location",
+            self.world.locations.iter().map(|entry| entry.id.as_str()),
+            &mut issues,
+        );
+        validate_unique_ids(
+            "faction",
+            self.factions.iter().map(|entry| entry.id.as_str()),
+            &mut issues,
+        );
+        validate_unique_ids(
+            "npc",
+            self.npcs.iter().map(|entry| entry.id.as_str()),
+            &mut issues,
+        );
+        validate_unique_ids(
+            "quest",
+            self.quests.iter().map(|entry| entry.id.as_str()),
+            &mut issues,
+        );
+        validate_unique_ids(
+            "item visual",
+            self.item_visuals
+                .iter()
+                .map(|entry| entry.item_name.as_str()),
+            &mut issues,
+        );
+        validate_unique_ids(
+            "event",
+            self.events.iter().map(|entry| entry.id.as_str()),
+            &mut issues,
+        );
 
-        let location_names: HashSet<&str> = self.world.locations.iter().map(|entry| entry.name.as_str()).collect();
-        let faction_names: HashSet<&str> = self.factions.iter().map(|entry| entry.name.as_str()).collect();
+        let location_names: HashSet<&str> = self
+            .world
+            .locations
+            .iter()
+            .map(|entry| entry.name.as_str())
+            .collect();
+        let faction_names: HashSet<&str> = self
+            .factions
+            .iter()
+            .map(|entry| entry.name.as_str())
+            .collect();
         let npc_names: HashSet<&str> = self.npcs.iter().map(|entry| entry.name.as_str()).collect();
 
         for location in &self.world.locations {
             for exit in &location.exits {
                 if !self.world.locations.iter().any(|other| other.id == *exit) {
-                    issues.push(format!("location {} exits to unknown location id {}", location.id, exit));
+                    issues.push(format!(
+                        "location {} exits to unknown location id {}",
+                        location.id, exit
+                    ));
                 }
             }
         }
 
         for npc in &self.npcs {
             if !location_names.contains(npc.location_name.as_str()) {
-                issues.push(format!("npc {} uses unknown location {}", npc.id, npc.location_name));
+                issues.push(format!(
+                    "npc {} uses unknown location {}",
+                    npc.id, npc.location_name
+                ));
             }
             if let Some(faction_name) = npc.faction_name.as_deref() {
                 if !faction_names.contains(faction_name) {
-                    issues.push(format!("npc {} uses unknown faction {}", npc.id, faction_name));
+                    issues.push(format!(
+                        "npc {} uses unknown faction {}",
+                        npc.id, faction_name
+                    ));
                 }
             }
         }
 
         for quest in &self.quests {
             if !location_names.contains(quest.location_name.as_str()) {
-                issues.push(format!("quest {} uses unknown location {}", quest.id, quest.location_name));
+                issues.push(format!(
+                    "quest {} uses unknown location {}",
+                    quest.id, quest.location_name
+                ));
             }
             if !faction_names.contains(quest.faction_name.as_str()) {
-                issues.push(format!("quest {} uses unknown faction {}", quest.id, quest.faction_name));
+                issues.push(format!(
+                    "quest {} uses unknown faction {}",
+                    quest.id, quest.faction_name
+                ));
             }
             if !npc_names.contains(quest.giver_npc_name.as_str()) {
-                issues.push(format!("quest {} uses unknown giver {}", quest.id, quest.giver_npc_name));
+                issues.push(format!(
+                    "quest {} uses unknown giver {}",
+                    quest.id, quest.giver_npc_name
+                ));
             }
         }
 
         for encounter in &self.encounters {
             if !location_names.contains(encounter.location_name.as_str()) {
-                issues.push(format!("encounter {} uses unknown location {}", encounter.enemy_name, encounter.location_name));
+                issues.push(format!(
+                    "encounter {} uses unknown location {}",
+                    encounter.enemy_name, encounter.location_name
+                ));
             }
         }
 
@@ -264,41 +338,77 @@ impl CampaignContent {
             if let Some(conditions) = &event.conditions {
                 for location in &conditions.locations {
                     if !location_names.contains(location.as_str()) {
-                        issues.push(format!("event {} uses unknown location {}", event.id, location));
+                        issues.push(format!(
+                            "event {} uses unknown location {}",
+                            event.id, location
+                        ));
                     }
                 }
                 if let (Some(min_day), Some(max_day)) = (conditions.min_day, conditions.max_day) {
                     if min_day > max_day {
-                        issues.push(format!("event {} has min_day greater than max_day", event.id));
+                        issues.push(format!(
+                            "event {} has min_day greater than max_day",
+                            event.id
+                        ));
                     }
                 }
                 if let Some(faction_name) = conditions.faction_name.as_deref() {
                     if !faction_names.contains(faction_name) {
-                        issues.push(format!("event {} uses unknown faction {}", event.id, faction_name));
+                        issues.push(format!(
+                            "event {} uses unknown faction {}",
+                            event.id, faction_name
+                        ));
                     }
                 }
                 if (conditions.min_reputation.is_some() || conditions.max_reputation.is_some())
                     && conditions.faction_name.as_deref().is_none()
                 {
-                    issues.push(format!("event {} has a reputation condition without a faction_name", event.id));
+                    issues.push(format!(
+                        "event {} has a reputation condition without a faction_name",
+                        event.id
+                    ));
                 }
-                if let (Some(min_reputation), Some(max_reputation)) = (conditions.min_reputation, conditions.max_reputation) {
+                if let (Some(min_reputation), Some(max_reputation)) =
+                    (conditions.min_reputation, conditions.max_reputation)
+                {
                     if min_reputation > max_reputation {
-                        issues.push(format!("event {} has min_reputation greater than max_reputation", event.id));
+                        issues.push(format!(
+                            "event {} has min_reputation greater than max_reputation",
+                            event.id
+                        ));
                     }
                 }
-                if conditions.required_item_name.as_deref().map(|name| name.trim().is_empty()).unwrap_or(false) {
-                    issues.push(format!("event {} has an empty required_item_name", event.id));
+                if conditions
+                    .required_item_name
+                    .as_deref()
+                    .map(|name| name.trim().is_empty())
+                    .unwrap_or(false)
+                {
+                    issues.push(format!(
+                        "event {} has an empty required_item_name",
+                        event.id
+                    ));
                 }
-                if conditions.required_condition_name.as_deref().map(|name| name.trim().is_empty()).unwrap_or(false) {
-                    issues.push(format!("event {} has an empty required_condition_name", event.id));
+                if conditions
+                    .required_condition_name
+                    .as_deref()
+                    .map(|name| name.trim().is_empty())
+                    .unwrap_or(false)
+                {
+                    issues.push(format!(
+                        "event {} has an empty required_condition_name",
+                        event.id
+                    ));
                 }
             }
         }
 
         for atmosphere in &self.atmospheres {
             if !location_names.contains(atmosphere.location_name.as_str()) {
-                issues.push(format!("atmosphere uses unknown location {}", atmosphere.location_name));
+                issues.push(format!(
+                    "atmosphere uses unknown location {}",
+                    atmosphere.location_name
+                ));
             }
         }
 
@@ -316,16 +426,20 @@ impl CampaignContent {
             });
         }
 
-        let region_id = world.regions.first().map(|region| region.id).unwrap_or_else(|| {
-            let id = world.allocate_id();
-            world.regions.push(Region {
-                id,
-                name: self.world.region.name.clone(),
-                description: self.world.region.description.clone(),
-                location_ids: Vec::new(),
+        let region_id = world
+            .regions
+            .first()
+            .map(|region| region.id)
+            .unwrap_or_else(|| {
+                let id = world.allocate_id();
+                world.regions.push(Region {
+                    id,
+                    name: self.world.region.name.clone(),
+                    description: self.world.region.description.clone(),
+                    location_ids: Vec::new(),
+                });
+                id
             });
-            id
-        });
 
         for location in &self.world.locations {
             if world.location_by_name(&location.name).is_none() {
@@ -346,15 +460,28 @@ impl CampaignContent {
             let exits = location
                 .exits
                 .iter()
-                .filter_map(|exit_id| self.world.locations.iter().find(|candidate| candidate.id == *exit_id))
-                .filter_map(|exit_location| world.location_by_name(&exit_location.name).map(|world_exit| world_exit.id))
+                .filter_map(|exit_id| {
+                    self.world
+                        .locations
+                        .iter()
+                        .find(|candidate| candidate.id == *exit_id)
+                })
+                .filter_map(|exit_location| {
+                    world
+                        .location_by_name(&exit_location.name)
+                        .map(|world_exit| world_exit.id)
+                })
                 .collect::<Vec<_>>();
             if let Some(world_location) = world.location_by_name_mut(&location.name) {
                 world_location.exits = exits;
             }
         }
 
-        if let Some(region) = world.regions.iter_mut().find(|region| region.id == region_id) {
+        if let Some(region) = world
+            .regions
+            .iter_mut()
+            .find(|region| region.id == region_id)
+        {
             region.location_ids = world
                 .locations
                 .iter()
@@ -372,7 +499,9 @@ impl CampaignContent {
     }
 
     pub fn encounter_for(&self, location_name: &str) -> Option<&EncounterContent> {
-        self.encounters.iter().find(|entry| entry.location_name == location_name)
+        self.encounters
+            .iter()
+            .find(|entry| entry.location_name == location_name)
     }
 
     pub fn location_art_for(&self, location_name: &str) -> Option<&str> {
@@ -447,7 +576,8 @@ pub fn load_campaign_content_report() -> ContentLoadReport {
         .map(|entry| entry.name.as_str())
         .collect();
     let base_events = std::mem::take(&mut report.content.events);
-    let base_event_ids: HashSet<String> = base_events.iter().map(|event| event.id.clone()).collect();
+    let base_event_ids: HashSet<String> =
+        base_events.iter().map(|event| event.id.clone()).collect();
     report.content.events = filter_valid_events(
         base_events,
         &base_location_names,
@@ -472,9 +602,10 @@ pub fn load_campaign_content_report() -> ContentLoadReport {
             continue;
         }
         if !seen_mod_ids.insert(discovered.manifest.id.clone()) {
-            report
-                .warnings
-                .push(format!("skipping duplicate mod id {}", discovered.manifest.id));
+            report.warnings.push(format!(
+                "skipping duplicate mod id {}",
+                discovered.manifest.id
+            ));
             continue;
         }
 
@@ -503,7 +634,8 @@ pub fn load_campaign_content_report() -> ContentLoadReport {
 }
 
 fn load_base_content() -> io::Result<CampaignContent> {
-    let path = campaign_content_path().ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "base content file not found"))?;
+    let path = campaign_content_path()
+        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "base content file not found"))?;
     let data = fs::read_to_string(path)?;
     let parsed: CampaignContent = serde_json::from_str(&data)
         .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err.to_string()))?;
@@ -542,10 +674,21 @@ fn discover_mods() -> Vec<DiscoveredMod> {
         }
         match fs::read_to_string(&manifest_path) {
             Ok(data) => match serde_json::from_str::<ModManifest>(&data) {
-                Ok(manifest) => found.push(DiscoveredMod { manifest, manifest_path }),
-                Err(err) => ui::diagnostic(&format!("Could not parse mod manifest {}: {}", manifest_path.display(), err)),
+                Ok(manifest) => found.push(DiscoveredMod {
+                    manifest,
+                    manifest_path,
+                }),
+                Err(err) => ui::diagnostic(&format!(
+                    "Could not parse mod manifest {}: {}",
+                    manifest_path.display(),
+                    err
+                )),
             },
-            Err(err) => ui::diagnostic(&format!("Could not read mod manifest {}: {}", manifest_path.display(), err)),
+            Err(err) => ui::diagnostic(&format!(
+                "Could not read mod manifest {}: {}",
+                manifest_path.display(),
+                err
+            )),
         }
     }
 
@@ -577,15 +720,31 @@ fn first_existing_path(relative: &str) -> Option<PathBuf> {
     candidates.into_iter().find(|path| Path::new(path).exists())
 }
 
-fn merge_campaign_content(base: &mut CampaignContent, incoming: CampaignContent, warnings: &mut Vec<String>) {
+fn merge_campaign_content(
+    base: &mut CampaignContent,
+    incoming: CampaignContent,
+    warnings: &mut Vec<String>,
+) {
     base.world.region = incoming.world.region;
-    merge_vec_by_key(&mut base.world.locations, incoming.world.locations, |entry| entry.id.clone());
-    merge_vec_by_key(&mut base.factions, incoming.factions, |entry| entry.id.clone());
+    merge_vec_by_key(
+        &mut base.world.locations,
+        incoming.world.locations,
+        |entry| entry.id.clone(),
+    );
+    merge_vec_by_key(&mut base.factions, incoming.factions, |entry| {
+        entry.id.clone()
+    });
     merge_vec_by_key(&mut base.npcs, incoming.npcs, |entry| entry.id.clone());
     merge_vec_by_key(&mut base.quests, incoming.quests, |entry| entry.id.clone());
-    merge_vec_by_key(&mut base.encounters, incoming.encounters, |entry| entry.location_name.clone());
-    merge_vec_by_key(&mut base.atmospheres, incoming.atmospheres, |entry| entry.location_name.clone());
-    merge_vec_by_key(&mut base.item_visuals, incoming.item_visuals, |entry| entry.item_name.clone());
+    merge_vec_by_key(&mut base.encounters, incoming.encounters, |entry| {
+        entry.location_name.clone()
+    });
+    merge_vec_by_key(&mut base.atmospheres, incoming.atmospheres, |entry| {
+        entry.location_name.clone()
+    });
+    merge_vec_by_key(&mut base.item_visuals, incoming.item_visuals, |entry| {
+        entry.item_name.clone()
+    });
 
     let location_names: HashSet<&str> = base
         .world
@@ -593,9 +752,17 @@ fn merge_campaign_content(base: &mut CampaignContent, incoming: CampaignContent,
         .iter()
         .map(|entry| entry.name.as_str())
         .collect();
-    let faction_names: HashSet<&str> = base.factions.iter().map(|entry| entry.name.as_str()).collect();
+    let faction_names: HashSet<&str> = base
+        .factions
+        .iter()
+        .map(|entry| entry.name.as_str())
+        .collect();
     let existing_ids: HashSet<String> = base.events.iter().map(|event| event.id.clone()).collect();
-    let incoming_event_ids: HashSet<String> = incoming.events.iter().map(|event| event.id.clone()).collect();
+    let incoming_event_ids: HashSet<String> = incoming
+        .events
+        .iter()
+        .map(|event| event.id.clone())
+        .collect();
     let known_event_ids: HashSet<String> = existing_ids
         .iter()
         .cloned()
@@ -731,15 +898,27 @@ fn validate_event_content(
         {
             issues.push("reputation condition requires faction_name".to_string());
         }
-        if let (Some(min_reputation), Some(max_reputation)) = (conditions.min_reputation, conditions.max_reputation) {
+        if let (Some(min_reputation), Some(max_reputation)) =
+            (conditions.min_reputation, conditions.max_reputation)
+        {
             if min_reputation > max_reputation {
                 issues.push("min_reputation greater than max_reputation".to_string());
             }
         }
-        if conditions.required_item_name.as_deref().map(|name| name.trim().is_empty()).unwrap_or(false) {
+        if conditions
+            .required_item_name
+            .as_deref()
+            .map(|name| name.trim().is_empty())
+            .unwrap_or(false)
+        {
             issues.push("required_item_name cannot be empty".to_string());
         }
-        if conditions.required_condition_name.as_deref().map(|name| name.trim().is_empty()).unwrap_or(false) {
+        if conditions
+            .required_condition_name
+            .as_deref()
+            .map(|name| name.trim().is_empty())
+            .unwrap_or(false)
+        {
             issues.push("required_condition_name cannot be empty".to_string());
         }
     }
@@ -773,7 +952,6 @@ fn default_campaign_content() -> CampaignContent {
     serde_json::from_str(include_str!("../data/base_content.json"))
         .expect("embedded base content JSON must remain valid")
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -845,8 +1023,13 @@ mod tests {
             &mut warnings,
         );
         assert!(accepted.is_empty());
-        assert!(warnings.iter().any(|warning| warning.contains("bad.event") && warning.contains("zero weight")));
-        assert!(warnings.iter().any(|warning| warning.contains("followup.event") && warning.contains("was rejected or unavailable")));
+        assert!(warnings
+            .iter()
+            .any(|warning| warning.contains("bad.event") && warning.contains("zero weight")));
+        assert!(warnings
+            .iter()
+            .any(|warning| warning.contains("followup.event")
+                && warning.contains("was rejected or unavailable")));
     }
 
     #[test]
