@@ -346,15 +346,6 @@ jobs:
           path: dist
           merge-multiple: true
 
-      - name: Package source archive
-        shell: bash
-        run: |
-          set -euo pipefail
-          archive="ashen_chronicle-${GITHUB_REF_NAME}-source.tar.xz"
-          prefix="ashen_chronicle-${GITHUB_REF_NAME}/"
-
-          git archive --format=tar --prefix="$prefix" "$GITHUB_SHA" | xz -9 -T0 > "dist/$archive"
-
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v3.0.2
         with:
