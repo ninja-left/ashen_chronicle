@@ -342,7 +342,7 @@ jobs:
       - name: Download release archives
         uses: actions/download-artifact@v8.0.1
         with:
-          pattern: release-*
+          pattern: ashen_chronicle-*
           path: dist
           merge-multiple: true
 
