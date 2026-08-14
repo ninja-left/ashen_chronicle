@@ -345,6 +345,8 @@ jobs:
           pattern: ashen_chronicle-*
           path: dist
           merge-multiple: true
+          skip-decompress: true
+        run: ls -R dist/
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v3.0.2
@@ -362,4 +364,3 @@ jobs:
             dist/ashen_chronicle-${{ github.ref_name }}-macos-aarch64.tar.xz
             dist/ashen_chronicle-${{ github.ref_name }}-windows-x86_64.zip
             dist/ashen_chronicle-${{ github.ref_name }}-windows-aarch64.zip
-            dist/ashen_chronicle-${{ github.ref_name }}-source.tar.xz
