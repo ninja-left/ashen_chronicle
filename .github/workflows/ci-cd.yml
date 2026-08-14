@@ -346,6 +346,9 @@ jobs:
           path: dist
           merge-multiple: true
           skip-decompress: true
+
+      - name: List Downloaded archives
+        shell: bash
         run: ls -R dist/
 
       - name: Publish GitHub Release
