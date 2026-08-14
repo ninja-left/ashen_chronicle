@@ -200,7 +200,7 @@ jobs:
         shell: bash
         env:
           TARGET: ${{ matrix.target }}
-          PLATFORM: ${{ matrix.platform }}
+          BUILD_PLATFORM: ${{ matrix.platform }}
           ARCH: ${{ matrix.arch }}
         run: |
           set -euo pipefail
@@ -208,11 +208,11 @@ jobs:
           : > build.log
           rustup target add "$TARGET"
 
-          if [[ "$PLATFORM" == "linux" && "$ARCH" == "aarch64" ]]; then
+          if [[ "$BUILD_PLATFORM" == "linux" && "$ARCH" == "aarch64" ]]; then
             export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc
           fi
 
-          if [[ "$PLATFORM" == "android" ]]; then
+          if [[ "$BUILD_PLATFORM" == "android" ]]; then
             export ANDROID_NDK_HOME="$ANDROID_SDK_ROOT/ndk/27.3.13750724"
             export PATH="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH"
 
@@ -243,17 +243,17 @@ jobs:
         shell: bash
         env:
           TARGET: ${{ matrix.target }}
-          PLATFORM: ${{ matrix.platform }}
+          BUILD_PLATFORM: ${{ matrix.platform }}
           ARCH: ${{ matrix.arch }}
           ARCHIVE_EXT: ${{ matrix.archive_ext }}
         run: |
           set -euo pipefail
 
-          release_name="ashen_chronicle-${GITHUB_REF_NAME}-${PLATFORM}-${ARCH}"
+          release_name="ashen_chronicle-${GITHUB_REF_NAME}-${BUILD_PLATFORM}-${ARCH}"
           package_dir="package/$release_name"
           mkdir -p "$package_dir"
 
-          if [[ "$PLATFORM" == "windows" ]]; then
+          if [[ "$BUILD_PLATFORM" == "windows" ]]; then
             cp "target/$TARGET/release/ashen_chronicle.exe" "$package_dir/"
             7z a -tzip -mx=9 "$release_name.$ARCHIVE_EXT" "$package_dir/ashen_chronicle.exe"
           else
@@ -277,19 +277,19 @@ jobs:
         shell: bash
         env:
           TARGET: ${{ matrix.target }}
-          PLATFORM: ${{ matrix.platform }}
+          BUILD_PLATFORM: ${{ matrix.platform }}
           ARCH: ${{ matrix.arch }}
         run: |
           set +e
           {
             printf '%s\n' \
-              "platform=${PLATFORM}" \
+              "platform=${BUILD_PLATFORM}" \
               "arch=${ARCH}" \
               "target=${TARGET}" \
               "tag=${GITHUB_REF_NAME}"
             cat build.log 2>/dev/null || true
           } > build-log.txt
-          tar caf "build-log-${PLATFORM}-${ARCH}.tar.xz" build-log.txt
+          tar caf "build-log-${BUILD_PLATFORM}-${ARCH}.tar.xz" build-log.txt
 
       - name: Upload build log
         if: always()
