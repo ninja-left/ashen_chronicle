@@ -157,7 +157,7 @@ jobs:
               ;;
           esac
 
-          package_version="$(grep '^version = ' Cargo.toml | head -n 1 | cut -d'\"' -f2)"
+          package_version="$(grep '^version = ' Cargo.toml | head -n 1 | cut -d\" -f2)"
           tag_version="${GITHUB_REF_NAME#v}"
 
           if [ "$package_version" != "$tag_version" ]; then
