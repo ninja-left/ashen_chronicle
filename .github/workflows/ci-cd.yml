@@ -212,6 +212,30 @@ jobs:
             export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc
           fi
 
+          if [[ "$BUILD_PLATFORM" == "windows" ]]; then
+            case "$ARCH" in
+              x86_64)
+                linker="${VCToolsInstallDir}bin/HostX64/x64/link.exe"
+                ;;
+              aarch64)
+                linker="${VCToolsInstallDir}bin/HostX64/arm64/link.exe"
+                ;;
+              *)
+                echo "Unsupported Windows architecture: $ARCH"
+                exit 1
+                ;;
+            esac
+
+            if [[ ! -f "$linker" ]]; then
+              echo "MSVC linker not found: $linker"
+              exit 1
+            fi
+
+            target_env="${TARGET//-/_}"
+            target_env="${target_env^^}"
+            export "CARGO_TARGET_${target_env}_LINKER=$linker"
+          fi
+
           if [[ "$BUILD_PLATFORM" == "android" ]]; then
             export ANDROID_NDK_HOME="$ANDROID_SDK_ROOT/ndk/27.3.13750724"
             export PATH="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH"
