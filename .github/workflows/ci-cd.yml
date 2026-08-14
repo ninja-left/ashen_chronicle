@@ -78,12 +78,59 @@ jobs:
           retention-days: 7
           archive: false
 
-  release:
-    name: Build and Release
+  build:
+    name: Build ${{ matrix.platform }} ${{ matrix.arch }}
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: android
+            arch: x86_64
+            target: x86_64-linux-android
+            runner: ubuntu-latest
+            archive_ext: tar.xz
+          - platform: android
+            arch: aarch64
+            target: aarch64-linux-android
+            runner: ubuntu-latest
+            archive_ext: tar.xz
+          - platform: android
+            arch: armv7
+            target: armv7-linux-androideabi
+            runner: ubuntu-latest
+            archive_ext: tar.xz
+          - platform: linux
+            arch: x86_64
+            target: x86_64-unknown-linux-gnu
+            runner: ubuntu-latest
+            archive_ext: tar.xz
+          - platform: linux
+            arch: aarch64
+            target: aarch64-unknown-linux-gnu
+            runner: ubuntu-latest
+            archive_ext: tar.xz
+          - platform: macos
+            arch: x86_64
+            target: x86_64-apple-darwin
+            runner: macos-15-intel
+            archive_ext: tar.xz
+          - platform: macos
+            arch: aarch64
+            target: aarch64-apple-darwin
+            runner: macos-15
+            archive_ext: tar.xz
+          - platform: windows
+            arch: x86_64
+            target: x86_64-pc-windows-msvc
+            runner: windows-latest
+            archive_ext: zip
+          - platform: windows
+            arch: aarch64
+            target: aarch64-pc-windows-msvc
+            runner: windows-latest
+            archive_ext: zip
 
     steps:
       - name: Checkout tag
@@ -98,12 +145,6 @@ jobs:
             echo "Tag $GITHUB_REF_NAME does not point to a commit contained in main."
             exit 1
           fi
-
-      - name: Set up Rust
-        uses: actions-rust-lang/setup-rust-toolchain@v1.17.0
-        with:
-          toolchain: stable
-          cache: true
 
       - name: Validate release version
         shell: bash
@@ -124,54 +165,186 @@ jobs:
             exit 1
           fi
 
+      - name: Set up Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1.17.0
+        with:
+          toolchain: stable
+          cache: true
+
+      - name: Set up Android SDK
+        if: matrix.platform == 'android'
+        uses: android-actions/setup-android@v4.0.1
+        with:
+          packages: platform-tools
+
+      - name: Install Android NDK
+        if: matrix.platform == 'android'
+        shell: bash
+        run: |
+          sdkmanager --install "ndk;27.3.13750724"
+
+      - name: Configure Linux cross compiler
+        if: matrix.platform == 'linux' && matrix.arch == 'aarch64'
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+
+      - name: Configure Windows build environment
+        if: matrix.platform == 'windows'
+        uses: ilammy/msvc-dev-cmd@v1.13.0
+        with:
+          arch: ${{ matrix.arch == 'aarch64' && 'amd64_arm64' || 'amd64' }}
+
       - name: Build release binary
         shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+          PLATFORM: ${{ matrix.platform }}
+          ARCH: ${{ matrix.arch }}
         run: |
-          set +e
+          set -euo pipefail
+
           : > build.log
+          rustup target add "$TARGET"
 
-          echo '=== cargo build --release ===' >> build.log
-          cargo build --release >> build.log 2>&1
-          build_status=$?
-          echo "build_status=$build_status" >> build.log
-
-          if [ "$build_status" -ne 0 ]; then
-            exit "$build_status"
+          if [[ "$PLATFORM" == "linux" && "$ARCH" == "aarch64" ]]; then
+            export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc
           fi
 
-      - name: Package source archive
+          if [[ "$PLATFORM" == "android" ]]; then
+            export ANDROID_NDK_HOME="$ANDROID_SDK_ROOT/ndk/27.3.13750724"
+            export PATH="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH"
+
+            case "$TARGET" in
+              x86_64-linux-android)
+                linker="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/x86_64-linux-android24-clang"
+                ;;
+              aarch64-linux-android)
+                linker="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android24-clang"
+                ;;
+              armv7-linux-androideabi)
+                linker="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/armv7a-linux-androideabi24-clang"
+                ;;
+              *)
+                echo "Unsupported Android target: $TARGET"
+                exit 1
+                ;;
+            esac
+
+            target_env="${TARGET//-/_}"
+            target_env="${target_env^^}"
+            export "CARGO_TARGET_${target_env}_LINKER=$linker"
+          fi
+
+          cargo build --release --target "$TARGET" 2>&1 | tee -a build.log
+
+      - name: Package release archive
         shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+          PLATFORM: ${{ matrix.platform }}
+          ARCH: ${{ matrix.arch }}
+          ARCHIVE_EXT: ${{ matrix.archive_ext }}
         run: |
-          archive="ashen_chronicle-${GITHUB_REF_NAME}.tar.xz"
-          prefix="ashen_chronicle-${GITHUB_REF_NAME}/"
+          set -euo pipefail
 
-          if ! git archive --format=tar --prefix="$prefix" "$GITHUB_SHA" | xz -9 -T0 > "$archive" 2>> build.log; then
-            echo 'Source archive creation failed.' >> build.log
-            exit 1
+          release_name="ashen_chronicle-${GITHUB_REF_NAME}-${PLATFORM}-${ARCH}"
+          package_dir="package/$release_name"
+          mkdir -p "$package_dir"
+
+          if [[ "$PLATFORM" == "windows" ]]; then
+            cp "target/$TARGET/release/ashen_chronicle.exe" "$package_dir/"
+            7z a -tzip -mx=9 "$release_name.$ARCHIVE_EXT" "$package_dir/ashen_chronicle.exe"
+          else
+            cp "target/$TARGET/release/ashen_chronicle" "$package_dir/"
+            tar -cJf "$release_name.$ARCHIVE_EXT" -C package "$release_name"
           fi
 
-          echo "archive=$archive" >> build.log
+          echo "Created $release_name.$ARCHIVE_EXT" | tee -a build.log
+
+      - name: Upload release archive
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: release-${{ matrix.platform }}-${{ matrix.arch }}
+          path: ashen_chronicle-${{ github.ref_name }}-${{ matrix.platform }}-${{ matrix.arch }}.${{ matrix.archive_ext }}
+          if-no-files-found: error
+          retention-days: 7
+          archive: false
 
       - name: Archive build log
         if: always()
         shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+          PLATFORM: ${{ matrix.platform }}
+          ARCH: ${{ matrix.arch }}
         run: |
           set +e
-          tar caf build-log.tar.xz build.log
+          {
+            printf '%s\n' \
+              "platform=${PLATFORM}" \
+              "arch=${ARCH}" \
+              "target=${TARGET}" \
+              "tag=${GITHUB_REF_NAME}"
+            cat build.log 2>/dev/null || true
+          } > build-log.txt
+          tar caf "build-log-${PLATFORM}-${ARCH}.tar.xz" build-log.txt
 
       - name: Upload build log
         if: always()
         uses: actions/upload-artifact@v7.0.1
         with:
-          name: build-log-${{ github.run_id }}.tar.xz
-          path: build-log.tar.xz
+          name: build-log-${{ matrix.platform }}-${{ matrix.arch }}
+          path: build-log-${{ matrix.platform }}-${{ matrix.arch }}.tar.xz
           if-no-files-found: error
           retention-days: 7
           archive: false
+
+  release:
+    name: Publish GitHub Release
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout tag
+        uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Download release archives
+        uses: actions/download-artifact@v8.0.1
+        with:
+          pattern: release-*
+          path: dist
+          merge-multiple: true
+
+      - name: Package source archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="ashen_chronicle-${GITHUB_REF_NAME}-source.tar.xz"
+          prefix="ashen_chronicle-${GITHUB_REF_NAME}/"
+
+          git archive --format=tar --prefix="$prefix" "$GITHUB_SHA" | xz -9 -T0 > "dist/$archive"
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v3.0.2
         with:
           tag_name: ${{ github.ref_name }}
           generate_release_notes: true
-          files: ashen_chronicle-${{ github.ref_name }}.tar.xz
+          preserve_order: true
+          files: |
+            dist/ashen_chronicle-${{ github.ref_name }}-android-x86_64.tar.xz
+            dist/ashen_chronicle-${{ github.ref_name }}-android-aarch64.tar.xz
+            dist/ashen_chronicle-${{ github.ref_name }}-android-armv7.tar.xz
+            dist/ashen_chronicle-${{ github.ref_name }}-linux-x86_64.tar.xz
+            dist/ashen_chronicle-${{ github.ref_name }}-linux-aarch64.tar.xz
+            dist/ashen_chronicle-${{ github.ref_name }}-macos-x86_64.tar.xz
+            dist/ashen_chronicle-${{ github.ref_name }}-macos-aarch64.tar.xz
+            dist/ashen_chronicle-${{ github.ref_name }}-windows-x86_64.zip
+            dist/ashen_chronicle-${{ github.ref_name }}-windows-aarch64.zip
+            dist/ashen_chronicle-${{ github.ref_name }}-source.tar.xz
