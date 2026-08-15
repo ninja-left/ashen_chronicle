@@ -2009,7 +2009,90 @@ fn death_screen(state: &mut GameState) -> std::io::Result<bool> {
 }
 
 fn death_legacy_screen(state: &GameState) {
-    const VARIANTS: [(&str, &str); 3] = [
+    const VARIANTS: [(&str, &str); 8] = [
+        (
+            "The armor remains. The one inside does not.",
+            r#"           _________
+          /         \
+         /  _     _  \
+        |  / \   / \  |
+        |  \_/   \_/  |
+         \     ^     /
+          \_________/
+             /|\
+            / | \
+           /  |  \
+          /   |   \
+         /    |    \
+              |
+             / \
+            /   \
+ "#,
+        ),
+        (
+            "No crown survives the grave.",
+            r#"          /\        /\
+         /  \  /\  /  \
+        /____\/  \/____\
+             \  /
+              \/
+              ||
+              ||
+          ____||____
+         /          \
+        /____________\
+"#,
+        ),
+        (
+            "The earth remembers what you leave behind.",
+            r#"              ______
+             /      \
+            /        \
+           /          \
+          /            \
+         /______________\
+              ||||
+              ||||
+              ||||
+        ______||||______
+       /                \
+      /__________________\
+"#,
+        ),
+        (
+            "The body falls. The world does not.",
+            r#"             /\
+            /  \
+           /    \
+          /______\
+             ||
+        _____||_____
+       /     ||     \
+      /      ||      \
+     /_______||_______\
+             ||
+            /  \
+           /    \
+          /______\
+ "#,
+        ),
+        (
+            "The flame gutters. The ash remains.",
+            r#"              |
+             / \
+            /   \
+           |     |
+           |     |
+           |_____|
+             |||
+             |||
+          ___|||___
+         /         \
+        /___________\
+
+             . . .
+ "#,
+        ),
         (
             "The body is still. The world is not.",
             r#"        .-''''-.

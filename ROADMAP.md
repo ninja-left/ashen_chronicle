@@ -593,3 +593,12 @@ Completed:
 - kept quit behavior non-destructive; selecting the leave choice exits without saving
 - left the death-screen artwork untouched for the dedicated death-screen patch
 - bumped the project version to v0.22.2
+
+## v0.22.3 Dark death-screen art variants
+
+Completed:
+- added five new dark death-screen ASCII variants
+- added distinct death-themed sentences for the new variants
+- retained the existing three death-screen variants for a total of eight randomized variants
+- kept the existing death summary, inheritance flow, and non-destructive quit behavior unchanged
+- bumped the project version to v0.22.3
