@@ -576,3 +576,11 @@ Completed:
 - removed save-on-quit behavior; saving remains tied to safe meditation
 - made death-screen quitting non-destructive as well
 - bumped the project version to v0.22.0
+
+## v0.22.1 Dark start-screen art variants
+
+Completed:
+- added four randomized dark start-screen ASCII variants
+- paired each start-screen artwork variant with an approved atmospheric sentence
+- kept start-screen art limited to the start flow; quit and death artwork remain unchanged for their own patches
+- bumped the project version to v0.22.1
