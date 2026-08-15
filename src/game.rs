@@ -61,29 +61,92 @@ pub fn run() -> std::io::Result<()> {
 }
 
 fn start_screen() -> std::io::Result<Option<(GameState, PathBuf)>> {
-    const ART: &str = r#"          .-''''-.
-       .-'        '-.
-     .'    ASHEN     '.
-    /    CHRONICLE     \
-   |                    |
-   |        .--.        |
-   |      .'    '.      |
-    \    /        \    /
-     '.  '.      .'  .'
-       '-._'----'_.-'
-          '----'
-"#;
+    const VARIANTS: [(&str, &str); 4] = [
+        (
+            "The road is quiet. Something is listening.",
+            r#"             .-.
+            /   \
+           /     \
+      _____/       \_____
+         \   /\   /
+          \ /  \ /
+           Y    Y
+          /      \
+         /        \
+        /          \
+       /            \
+      /              \
+     /                \
+"#,
+        ),
+        (
+            "The old gods are silent. The stones remember.",
+            r#"             /\
+            /  \
+           /____\
+          |      |
+      _____|      |_____
+          /        \
+         /          \
+        /            \
+       /              \
+      /________________\
+            ||  ||
+            ||  ||
+            ||  ||
+        ____||__||____
+"#,
+        ),
+        (
+            "Only ash remains where the fire once lived.",
+            r#"              .-.
+             (   )
+              `-'
+             /   \
+            /_____\
+
+              ||
+             /  \
+            /____\
+           |      |
+           |      |
+           |______|
+"#,
+        ),
+        (
+            "You are not the first to walk this road.",
+            r#"                 .-.
+              .-'   '-.
+            .'         '.
+           /    .---.    \
+          |    /     \    |
+          |   |  o o  |   |
+          |   |   ^   |   |
+           \   \ '-' /   /
+            '.  '---'  .'
+              '-.____.-'
+                  ||
+                  ||
+             _____||_____
+"#,
+        ),
+    ];
 
     loop {
         let current_dir = PathBuf::from(".");
         let save_files = find_save_files(&current_dir)?;
         let legacy_path = legacy_save_path(&current_dir);
         let has_saves = !save_files.is_empty() || legacy_path.exists();
+        let tick = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|duration| duration.subsec_nanos() as usize)
+            .unwrap_or(0);
+        let (sentence, art) = VARIANTS[tick % VARIANTS.len()];
 
         set_menu_screen(
             "THE ASHEN CHRONICLE",
-            Some("The world remembers. The dead do not.".to_string()),
-            Some(ART.to_string()),
+            Some(sentence.to_string()),
+            Some(art.to_string()),
         );
 
         let mut options = vec!["New Game".to_string()];
@@ -469,7 +532,7 @@ fn create_inherited_from_world(state: &GameState) -> std::io::Result<GameState> 
 }
 
 fn quit_screen() -> std::io::Result<bool> {
-    const VARIANTS: [(&str, &str, &str, &str); 4] = [
+    const VARIANTS: [(&str, &str, &str, &str); 9] = [
         (
             "The road ends here.\nFor tonight, anyway.",
             "Let the ashes take it.",
@@ -504,7 +567,7 @@ fn quit_screen() -> std::io::Result<bool> {
             "Leave them to the dark.",
             "Keep walking.",
             r#"       _..._       _..._
-     .-'     '-. .-'     '-.
+     .-'     '-. .-'     '-'.
     /           V           \
    /      _           _      \
    |     (_)         (_)     |
@@ -525,6 +588,93 @@ fn quit_screen() -> std::io::Result<bool> {
          | RIP |
          |     |
          |_____|
+"#,
+        ),
+        (
+            "The gate closes behind you. The road will remain.",
+            "Close the gate.",
+            "Leave it open.",
+            r#"        ______________________
+       /|                    |\
+      / |                    | \
+     /  |                    |  \
+    /   |                    |   \
+   /    |                    |    \
+  /_____|____________________|_____\
+        |                    |
+        |        ____        |
+        |       |    |       |
+        |       |    |       |
+        |_______|____|_______|
+"#,
+        ),
+        (
+            "The flame is gone. The silence remains.",
+            "Let the silence remain.",
+            "Feed the flame again.",
+            r#"             /\
+            /  \
+           /____\
+          |      |
+          |  __  |
+          | |  | |
+          | |__| |
+          |______|
+             ||
+          ___||___
+         |        |
+         |  .  .  |
+         |________|
+"#,
+        ),
+        (
+            "The road continues without you.",
+            "Leave the road behind.",
+            "Keep walking.",
+            r#"             /\                 /\
+            /  \               /  \
+           /    \             /    \
+          /      \___________/      \
+         /                         \
+        /                           \
+       /_____________________________\
+                    ||
+                    ||
+                    ||
+                    ||
+"#,
+        ),
+        (
+            "For now, the dead can wait.",
+            "Let the dead wait.",
+            "Not tonight.",
+            r#"       _        _        _
+      | |      | |      | |
+     _| |__   _| |__   _| |__
+    /     \  /     \  /     \
+   /       \/       \/       \
+        |     |     |
+        |     |     |
+   _____|_____|_____|_____
+"#,
+        ),
+        (
+            "One last look. Then darkness.",
+            "One last look.",
+            "Stay a little longer.",
+            r#"             .       *
+        *          .
+                  .       *
+           _____________
+          /             \
+         /               \
+        /                 \
+       /                   \
+      /                     \
+     /_______________________\
+             ||   ||
+             ||   ||
+             ||   ||
 "#,
         ),
     ];
