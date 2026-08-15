@@ -393,7 +393,7 @@ Completed:
 - migrated the terminal renderer to ratatui
 - added width/height-aware compact rendering for narrow vertical screens
 - kept the existing gameplay flows working inside the new screen shell
-- bumped the project version to 0.17.0
+- bumped the project version to v0.17.0
 
 
 ## v0.17.1 Mobile portrait UI cleanup
@@ -402,7 +402,7 @@ Completed:
 - expanded compact-mode detection so tall, narrow terminals no longer get forced into the desktop split layout
 - made prompt overlays use more of the available screen space on compact terminals
 - added scrolling window behavior for menu overlays so longer option lists stay readable on smaller screens
-- bumped the project version to 0.17.1
+- bumped the project version to v0.17.1
 
 ## v0.17.2 Monochrome prompt cleanup
 
@@ -410,14 +410,14 @@ Completed:
 - switched the UI styling to monochrome gray/white borders and highlights
 - moved the pause prompt out of the center overlay so result text stays visible
 - reduced the choice popup footprint so it does not bury the rest of the screen as aggressively
-- bumped the project version to 0.17.2
+- bumped the project version to v0.17.2
 ## v0.17.3 Docked prompt layout cleanup
 
 Completed:
 - moved prompt and confirmation dialogs into a reserved bottom panel instead of drawing them over the rest of the UI
 - kept the main dashboard visible while choices, pause prompts, and quit confirmations are active
 - tightened the prompt layout so messages and results stay readable behind the prompt flow
-- bumped the project version to 0.17.3
+- bumped the project version to v0.17.3
 
 
 ## v0.17.4 Turn-based result cleanup
@@ -427,7 +427,7 @@ Completed:
 - changed the Messages panel into a short-lived Result panel that is cleared when the player starts a new choice
 - kept action outcomes visible only for the current turn instead of letting old text pile up indefinitely
 - tightened the header layout to give landscape screens more usable space
-- bumped the project version to 0.17.4
+- bumped the project version to v0.17.4
 
 ## v0.17.5 Main-screen cleanup
 
@@ -438,7 +438,7 @@ Completed:
 - moved faction reputation into the character sheet
 - moved location arrival art and atmosphere into the Location panel instead of the Result panel
 - fixed the quit confirmation prompt so it no longer prints a stray `>` on separate lines
-- bumped the project version to 0.17.5
+- bumped the project version to v0.17.5
 
 
 
@@ -451,7 +451,7 @@ Completed:
 - kept combat health in the dashboard state so it updates while combat choices are rendered
 - normalized panel rendering and collapsed border overlap across compact and wide layouts
 - removed redundant combat HP text output and simplified the result display
-- bumped the project version to 0.17.6
+- bumped the project version to v0.17.6
 
 ## Phase 12: Data-driven event system
 
@@ -478,7 +478,7 @@ Completed:
 - added content validation for event IDs, triggers, weights, effects, chance ranges, and condition references
 - added unit tests covering event conditions and cooldown eligibility
 - removed the old hardcoded random travel-event branch from `game.rs`
-- bumped the project version to 0.18.0
+- bumped the project version to v0.18.0
 
 ## v0.18.1 Event validation and persistence test coverage
 
@@ -489,7 +489,7 @@ Completed:
 - added save/load coverage for persistent event cooldowns
 - added world-inheritance coverage confirming event cooldown state persists with the inherited world
 - added content filtering tests for invalid events and duplicate event IDs
-- bumped the project version to 0.18.1
+- bumped the project version to v0.18.1
 
 
 ## v0.19.0 Event & world memory integration
@@ -502,7 +502,7 @@ Completed:
 - validated prior-event references and rejected invalid event definitions without preventing valid content from loading
 - rehydrated runtime campaign content after save loading without storing campaign content in save files
 - added tests for structured event history, history-based conditions, runtime content rehydration, and existing persistence behavior
-- bumped the project version to 0.19.0
+- bumped the project version to v0.19.0
 
 
 ## v0.19.1 Save compression and character-specific filenames
@@ -513,7 +513,7 @@ Completed:
 - legacy uncompressed `ashen_chronicle_save.json` files remain loadable
 - startup discovers character-specific saves and preserves the selected save path
 - added tests for compressed round-tripping, legacy loading, invalid gzip data, filename sanitization, and character-specific paths
-- bumped the project version to 0.19.1
+- bumped the project version to v0.19.1
 
 
 ## Phase 13: Event branching and state-aware content
@@ -541,7 +541,7 @@ Completed:
 - fixed mod event validation so a mod event may safely reference an existing base event in `prior_event_id` conditions
 - added focused runtime and content-validation tests for reputation, inventory, condition, and cross-content event requirements
 - added the `event.market-recognition` campaign event to demonstrate reputation-gated narrative content
-- bumped the project version to 0.20.0
+- bumped the project version to v0.20.0
 
 
 ## v0.20.1 Test-failure repair and runtime flow restoration
@@ -552,7 +552,7 @@ Completed:
 - restored main-menu dispatch, loaded-state validation, NPC/faction/quest lookup helpers, and character creation/inheritance prompts
 - fixed save-path handling when a character dies and a new character inherits or starts a new world
 - removed the unused diagnostic macro and resolved the warnings reported by the v0.20.0 test run
-- bumped the project version to 0.20.1
+- bumped the project version to v0.20.1
 
 
 ## v0.20.2 Persistence test fixes
@@ -561,4 +561,18 @@ Completed:
 - normalized gzip decompression failures to `io::ErrorKind::InvalidData` so malformed compressed saves have a stable public error category
 - treated filename components containing no alphanumeric characters as `unnamed` after sanitization
 - removed two unused runtime helpers reported by the test build as dead code
-- bumped the project version to 0.20.2
+- bumped the project version to v0.20.2
+
+## v0.22.0 Start and quit screen overhaul
+
+Completed:
+- added a dedicated start screen instead of immediately entering new-game creation or save loading
+- made `New Game`, `Load Game`, and `Quit` explicit start-screen choices
+- only show `Load Game` when a compatible save or legacy save exists
+- added a dedicated save-selection screen instead of automatic loading or Y/N load confirmation
+- kept character/world creation behind the start-screen flow rather than making it the initial screen
+- added dedicated full-screen menu rendering so start, load, creation, and quit flows do not render the gameplay dashboard underneath them
+- changed quit handling to use the existing randomized farewell sentences as the actual choices instead of Y/N confirmation
+- removed save-on-quit behavior; saving remains tied to safe meditation
+- made death-screen quitting non-destructive as well
+- bumped the project version to v0.22.0
