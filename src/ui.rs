@@ -28,9 +28,17 @@ pub struct Dashboard {
     pub action_hint: Option<String>,
 }
 
+#[derive(Clone, Default)]
+struct MenuScreen {
+    title: String,
+    subtitle: Option<String>,
+    art: Option<String>,
+}
+
 #[derive(Default)]
 struct UiRuntime {
     dashboard: Dashboard,
+    menu_screen: Option<MenuScreen>,
     location_scene: Vec<String>,
     log: Vec<String>,
     initialized: bool,
@@ -80,9 +88,27 @@ pub fn init() -> io::Result<UiGuard> {
     Ok(UiGuard)
 }
 
+pub fn set_menu_screen(
+    title: impl Into<String>,
+    subtitle: Option<String>,
+    art: Option<String>,
+) {
+    let mut state = runtime().lock().unwrap();
+    state.menu_screen = Some(MenuScreen {
+        title: title.into(),
+        subtitle,
+        art,
+    });
+    state.log.clear();
+    if state.initialized {
+        let _ = render_locked(&mut state, None, None);
+    }
+}
+
 pub fn set_dashboard(dashboard: Dashboard) {
     let mut state = runtime().lock().unwrap();
     state.dashboard = dashboard;
+    state.menu_screen = None;
     state.initialized = true;
     let _ = render_locked(&mut state, None, None);
 }
@@ -420,6 +446,7 @@ fn render_locked(
     notice: Option<&str>,
 ) -> io::Result<()> {
     let dashboard = state.dashboard.clone();
+    let menu_screen = state.menu_screen.clone();
     let scene = state.location_scene.clone();
     let log = state.log.clone();
     let Some(terminal) = state.terminal.as_mut() else {
@@ -429,9 +456,59 @@ fn render_locked(
     terminal.draw(|frame| {
         let area = frame.area();
         frame.render_widget(Clear, area);
-        draw_dashboard(frame, area, &dashboard, &scene, &log, prompt, notice);
+        if let Some(menu_screen) = menu_screen.as_ref() {
+            draw_menu_screen(frame, area, menu_screen, prompt);
+        } else {
+            draw_dashboard(frame, area, &dashboard, &scene, &log, prompt, notice);
+        }
     })?;
     Ok(())
+}
+
+fn draw_menu_screen(
+    frame: &mut ratatui::Frame<'_>,
+    area: Rect,
+    menu: &MenuScreen,
+    prompt: Option<&[String]>,
+) {
+    let compact = is_compact_area(area);
+    let horizontal_margin = if compact { 1 } else { area.width / 10 };
+    let vertical_margin = if compact { 1 } else { area.height / 10 };
+    let outer = Rect {
+        x: area.x + horizontal_margin.min(area.width.saturating_sub(1)),
+        y: area.y + vertical_margin.min(area.height.saturating_sub(1)),
+        width: area.width.saturating_sub(horizontal_margin.saturating_mul(2)).max(1),
+        height: area.height.saturating_sub(vertical_margin.saturating_mul(2)).max(1),
+    };
+
+    let title = Paragraph::new(menu.title.clone())
+        .alignment(ratatui::layout::Alignment::Center)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .style(border_style(compact))
+                .merge_borders(MergeStrategy::Exact),
+        );
+    frame.render_widget(title, outer);
+
+    let inner = outer.inner(ratatui::layout::Margin { vertical: 2, horizontal: 3 });
+    let mut lines = Vec::new();
+    if let Some(art) = &menu.art {
+        lines.extend(art.lines().map(str::to_string));
+        lines.push(String::new());
+    }
+    if let Some(subtitle) = &menu.subtitle {
+        lines.extend(subtitle.lines().map(str::to_string));
+        lines.push(String::new());
+    }
+    if let Some(prompt_lines) = prompt {
+        lines.extend(prompt_lines.iter().cloned());
+    }
+
+    let paragraph = Paragraph::new(lines.join("\n"))
+        .alignment(ratatui::layout::Alignment::Center)
+        .wrap(Wrap { trim: true });
+    frame.render_widget(paragraph, inner);
 }
 
 fn draw_dashboard(
