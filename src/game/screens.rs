@@ -1,7 +1,7 @@
+use crate::game::validate_loaded_state;
 use crate::model::{create_inherited_state, create_new_state, GameState, WorldMode};
 use crate::persistence::{character_save_path, find_save_files, legacy_save_path, load_game};
-use crate::ui::{choose_from_list, narrate, pause, prompt, set_menu_screen};
-use crate::game::validate_loaded_state;
+use crate::ui::{choose_from_list, pause, prompt, set_menu_screen};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
