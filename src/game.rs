@@ -532,7 +532,7 @@ fn create_inherited_from_world(state: &GameState) -> std::io::Result<GameState> 
 }
 
 fn quit_screen() -> std::io::Result<bool> {
-    const VARIANTS: [(&str, &str, &str, &str); 4] = [
+    const VARIANTS: [(&str, &str, &str, &str); 9] = [
         (
             "The road ends here.\nFor tonight, anyway.",
             "Let the ashes take it.",
@@ -588,6 +588,93 @@ fn quit_screen() -> std::io::Result<bool> {
          | RIP |
          |     |
          |_____|
+"#,
+        ),
+        (
+            "The gate closes behind you. The road will remain.",
+            "Close the gate.",
+            "Leave it open.",
+            r#"        ______________________
+       /|                    |\
+      / |                    | \
+     /  |                    |  \
+    /   |                    |   \
+   /    |                    |    \
+  /_____|____________________|_____\
+        |                    |
+        |        ____        |
+        |       |    |       |
+        |       |    |       |
+        |_______|____|_______|
+"#,
+        ),
+        (
+            "The flame is gone. The silence remains.",
+            "Let the silence remain.",
+            "Feed the flame again.",
+            r#"             /\
+            /  \
+           /____\
+          |      |
+          |  __  |
+          | |  | |
+          | |__| |
+          |______|
+             ||
+          ___||___
+         |        |
+         |  .  .  |
+         |________|
+"#,
+        ),
+        (
+            "The road continues without you.",
+            "Leave the road behind.",
+            "Keep walking.",
+            r#"             /\                 /\
+            /  \               /  \
+           /    \             /    \
+          /      \___________/      \
+         /                         \
+        /                           \
+       /_____________________________\
+                    ||
+                    ||
+                    ||
+                    ||
+"#,
+        ),
+        (
+            "For now, the dead can wait.",
+            "Let the dead wait.",
+            "Not tonight.",
+            r#"       _        _        _
+      | |      | |      | |
+     _| |__   _| |__   _| |__
+    /     \  /     \  /     \
+   /       \/       \/       \
+        |     |     |
+        |     |     |
+   _____|_____|_____|_____
+"#,
+        ),
+        (
+            "One last look. Then darkness.",
+            "One last look.",
+            "Stay a little longer.",
+            r#"             .       *
+        *          .
+                  .       *
+           _____________
+          /             \
+         /               \
+        /                 \
+       /                   \
+      /                     \
+     /_______________________\
+             ||   ||
+             ||   ||
+             ||   ||
 "#,
         ),
     ];
