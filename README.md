@@ -32,23 +32,30 @@ The goal is to make the world feel persistent rather than disposable.
 
 ## Project Structure
 ```
-ashen_chronicle/
-├── data/
-│   ├── base_content.json
-│   └── mods/
-├── src/
-│   ├── content.rs
-│   ├── game.rs
-│   ├── main.rs
-│   ├── model.rs
-│   ├── persistence.rs
-│   └── ui.rs
-├── Cargo.toml
+ashen_chronicle
+├── data
+│   ├── mods
+│   │   └── README.md
+│   └── base_content.json
+├── src
+│   ├── game
+│   │   ├── actions.rs
+│   │   ├── combat.rs
+│   │   └── screens.rs
+│   ├── content.rs
+│   ├── events.rs
+│   ├── game.rs
+│   ├── main.rs
+│   ├── model.rs
+│   ├── persistence.rs
+│   └── ui.rs
+├── AGENTS.md
 ├── Cargo.lock
+├── Cargo.toml
 ├── DEVELOPMENT_PLAN.md
-├── ROADMAP.md
 ├── LICENSE
-└── README.md
+├── README.md
+└── ROADMAP.md
 ```
 
 "game.rs" contains the game logic and gameplay flow.
@@ -64,6 +71,10 @@ ashen_chronicle/
 "DEVELOPMENT_PLAN.md" contains the project's detailed development rules and design direction.
 
 "ROADMAP.md" is the main progress tracker for development.
+
+### Saves
+
+Save files are stored as gzip-compressed JSON using a character-specific filename such as `ashen_chronicle_save_Ash Walker.json.gz`. Existing `ashen_chronicle_save.json` saves from earlier versions remain readable.
 
 ## Building
 
@@ -131,7 +142,3 @@ See "[LICENSE](./LICENSE)" for the project's license information.
 
 The world remembers what you leave behind.
 
-
-### Saves
-
-Save files are stored as gzip-compressed JSON using a character-specific filename such as `ashen_chronicle_save_Ash Walker.json.gz`. Existing `ashen_chronicle_save.json` saves from earlier versions remain readable.
