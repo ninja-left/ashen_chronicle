@@ -1,0 +1,27 @@
+name: Temporary Rust Format Export
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions-rust-lang/setup-rust-toolchain@v1.17.0
+        with:
+          toolchain: stable
+      - name: Format
+        run: cargo fmt --all
+      - name: Archive formatted Rust sources
+        run: tar caf formatted-rust.tar.xz Cargo.toml Cargo.lock src/game.rs src/game/actions.rs src/game/combat.rs
+      - uses: actions/upload-artifact@v7.0.1
+        with:
+          name: formatted-rust
+          path: formatted-rust.tar.xz
+          archive: false
