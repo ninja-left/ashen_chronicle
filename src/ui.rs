@@ -88,11 +88,7 @@ pub fn init() -> io::Result<UiGuard> {
     Ok(UiGuard)
 }
 
-pub fn set_menu_screen(
-    title: impl Into<String>,
-    subtitle: Option<String>,
-    art: Option<String>,
-) {
+pub fn set_menu_screen(title: impl Into<String>, subtitle: Option<String>, art: Option<String>) {
     let mut state = runtime().lock().unwrap();
     state.menu_screen = Some(MenuScreen {
         title: title.into(),
@@ -477,8 +473,14 @@ fn draw_menu_screen(
     let outer = Rect {
         x: area.x + horizontal_margin.min(area.width.saturating_sub(1)),
         y: area.y + vertical_margin.min(area.height.saturating_sub(1)),
-        width: area.width.saturating_sub(horizontal_margin.saturating_mul(2)).max(1),
-        height: area.height.saturating_sub(vertical_margin.saturating_mul(2)).max(1),
+        width: area
+            .width
+            .saturating_sub(horizontal_margin.saturating_mul(2))
+            .max(1),
+        height: area
+            .height
+            .saturating_sub(vertical_margin.saturating_mul(2))
+            .max(1),
     };
 
     let title = Paragraph::new(menu.title.clone())
@@ -491,7 +493,10 @@ fn draw_menu_screen(
         );
     frame.render_widget(title, outer);
 
-    let inner = outer.inner(ratatui::layout::Margin { vertical: 2, horizontal: 3 });
+    let inner = outer.inner(ratatui::layout::Margin {
+        vertical: 2,
+        horizontal: 3,
+    });
     let mut lines = Vec::new();
     if let Some(art) = &menu.art {
         lines.extend(art.lines().map(str::to_string));

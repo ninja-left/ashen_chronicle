@@ -133,12 +133,20 @@ fn load_screen(
 
     let options: Vec<String> = save_files
         .iter()
-        .map(|path| path.file_name().and_then(|name| name.to_str()).unwrap_or("Unknown save").to_string())
+        .map(|path| {
+            path.file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or("Unknown save")
+                .to_string()
+        })
         .collect();
 
     set_menu_screen(
         "LOAD GAME",
-        Some("Choose a life to continue. No progress is changed until the save is loaded.".to_string()),
+        Some(
+            "Choose a life to continue."
+                .to_string(),
+        ),
         None,
     );
 
@@ -532,7 +540,11 @@ fn quit_screen() -> std::io::Result<bool> {
     let (line, leave_choice, stay_choice, art) = VARIANTS[index];
     let options = vec![leave_choice.to_string(), stay_choice.to_string()];
 
-    set_menu_screen("LEAVE THE ASHES?", Some(line.to_string()), Some(art.to_string()));
+    set_menu_screen(
+        "LEAVE?",
+        Some(line.to_string()),
+        Some(art.to_string()),
+    );
     match choose_from_list("", &options, None)? {
         Some(0) => Ok(true),
         Some(1) => Ok(false),
@@ -978,10 +990,7 @@ fn complete_quest(state: &mut GameState, quest_index: usize) -> bool {
         state.character.turn,
         format!("{} completed {}.", current_character_name, title),
     );
-    println!(
-        "\nQuest complete: {}",
-        title
-    );
+    println!("\nQuest complete: {}", title);
     println!("  Quest item consumed: {}", required_item_name);
     println!("  Reward: {}", reward.name);
     gain_experience(state, 25);
