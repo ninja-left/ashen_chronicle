@@ -366,7 +366,7 @@ Completed:
 - added raw-mode text input so prompts work directly inside the TUI without falling back to scrollback interaction
 - changed pause handling to a single-key confirmation instead of Enter-only input
 - updated the on-screen control hint to match the new keyboard flow
-- bumped the project version to 0.16.0
+- bumped the project version to v0.16.0
 
 ## Phase 11: Responsive ratatui renderer
 
@@ -584,3 +584,12 @@ Completed:
 - paired each start-screen artwork variant with an approved atmospheric sentence
 - kept start-screen art limited to the start flow; quit and death artwork remain unchanged for their own patches
 - bumped the project version to v0.22.1
+
+## v0.22.2 Dark quit-screen art variants
+
+Completed:
+- expanded the quit-screen artwork pool with five additional dark ASCII variants
+- added matching farewell choices for gate, extinguished shrine, empty road, graveyard, and final-look imagery
+- kept quit behavior non-destructive; selecting the leave choice exits without saving
+- left the death-screen artwork untouched for the dedicated death-screen patch
+- bumped the project version to v0.22.2
