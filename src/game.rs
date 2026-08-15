@@ -143,10 +143,7 @@ fn load_screen(
 
     set_menu_screen(
         "LOAD GAME",
-        Some(
-            "Choose a life to continue."
-                .to_string(),
-        ),
+        Some("Choose a life to continue.".to_string()),
         None,
     );
 
@@ -540,11 +537,7 @@ fn quit_screen() -> std::io::Result<bool> {
     let (line, leave_choice, stay_choice, art) = VARIANTS[index];
     let options = vec![leave_choice.to_string(), stay_choice.to_string()];
 
-    set_menu_screen(
-        "LEAVE?",
-        Some(line.to_string()),
-        Some(art.to_string()),
-    );
+    set_menu_screen("LEAVE?", Some(line.to_string()), Some(art.to_string()));
     match choose_from_list("", &options, None)? {
         Some(0) => Ok(true),
         Some(1) => Ok(false),
