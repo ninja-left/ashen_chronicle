@@ -6,7 +6,7 @@ on:
       - main
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   format:
@@ -18,10 +18,15 @@ jobs:
           toolchain: stable
       - name: Format
         run: cargo fmt --all
-      - name: Archive formatted Rust sources
-        run: tar caf formatted-rust.tar.xz Cargo.toml Cargo.lock src/game.rs src/game/actions.rs src/game/combat.rs
-      - uses: actions/upload-artifact@v7.0.1
-        with:
-          name: formatted-rust
-          path: formatted-rust.tar.xz
-          archive: false
+      - name: Commit formatted sources
+        shell: bash
+        run: |
+          if git diff --quiet -- Cargo.toml Cargo.lock src/game.rs src/game/actions.rs src/game/combat.rs; then
+            echo "Rust sources are already formatted."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Cargo.toml Cargo.lock src/game.rs src/game/actions.rs src/game/combat.rs
+          git commit -m "style: format v0.24.0 gameplay architecture"
+          git push
