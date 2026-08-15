@@ -153,7 +153,6 @@
 - kept the existing gameplay flows working inside the new screen shell
 - bumped the project version to v0.17.0
 
-
 ## v0.17.1 Mobile portrait UI cleanup
 
 - expanded compact-mode detection so tall, narrow terminals no longer get forced into the desktop split layout
@@ -294,10 +293,10 @@
 
 ## v0.23.0 Game Screen Architecture
 
-- Extracted start, load, character creation, quit, and death screen logic from `game.rs` into `game/screens.rs`.
-- Reduced `game.rs` responsibilities to game orchestration, state management, and gameplay logic.
-- Kept all gameplay behavior and screen flows unchanged.
-- No gameplay mechanics or data structures were changed.
+- extracted start, load, character creation, quit, and death screen logic from `game.rs` into `game/screens.rs`
+- reduced `game.rs` responsibilities to game orchestration, state management, and gameplay logic
+- kept all gameplay behavior and screen flows unchanged
+- no gameplay mechanics or data structures were changed
 
 ### Architectural Direction
 
@@ -326,6 +325,14 @@ src/
 └── ui.rs
 ```
 
+## v0.24.0 Gameplay Action Architecture
+
+- extracted main-menu action definitions and dispatch targets from `game.rs` into `game/actions.rs`
+- moved travel, meditation, NPC interaction, quest handling, inventory, journal, corpse recovery, progression, time/condition helpers, and death handling into the action module
+- extracted the combat encounter loop and combat-specific helpers into `game/combat.rs`
+- reduced `game.rs` to orchestration, campaign bootstrap/validation, dashboard rendering, and location-scene presentation
+- kept save compatibility and existing gameplay behavior unchanged
+- kept the new modules dependent on the existing model, persistence, event, and UI systems instead of introducing parallel state systems
+
 Planned follow-up:
-- v0.24.0: Extract gameplay actions/combat logic from `game.rs`.
-- v0.25.0: Split content loading/definitions/seeding out of the `content.rs`.
+- v0.25.0: Split content loading/definitions/seeding out of `content.rs`.
