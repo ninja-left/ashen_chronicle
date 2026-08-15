@@ -9,7 +9,7 @@ use crate::persistence::{
 };
 use crate::ui::{
     choose_from_list, clear_combat_health, clear_log, narrate, pause, prompt, set_combat_health,
-    set_location_scene, set_player_health, Dashboard,
+    set_dashboard, set_location_scene, set_menu_screen, set_player_health, Dashboard,
 };
 use std::mem;
 use std::path::{Path, PathBuf};
@@ -53,64 +53,125 @@ struct CombatEncounter {
 
 pub fn run() -> std::io::Result<()> {
     let _ui = crate::ui::init()?;
-    let (mut state, mut save_path) = start_or_load()?;
+    let Some((mut state, mut save_path)) = start_screen()? else {
+        return Ok(());
+    };
     bootstrap_campaign_content(&mut state);
     main_loop(&mut state, &mut save_path)
 }
 
-fn start_or_load() -> std::io::Result<(GameState, PathBuf)> {
-    let current_dir = PathBuf::from(".");
-    let mut save_files = find_save_files(&current_dir)?;
-    let legacy_path = legacy_save_path(&current_dir);
+fn start_screen() -> std::io::Result<Option<(GameState, PathBuf)>> {
+    const ART: &str = r#"          .-''''-.
+       .-'        '-.
+     .'    ASHEN     '.
+    /    CHRONICLE     \
+   |                    |
+   |        .--.        |
+   |      .'    '.      |
+    \    /        \    /
+     '.  '.      .'  .'
+       '-._'----'_.-'
+          '----'
+"#;
 
-    if !save_files.is_empty() || legacy_path.exists() {
-        let selected = if save_files.len() == 1 {
-            Some(save_files.remove(0))
-        } else if save_files.len() > 1 {
-            println!("Existing saves found:");
-            for (index, path) in save_files.iter().enumerate() {
-                println!("  {}. {}", index + 1, path.display());
-            }
-            let choice = prompt("Load save number, or press Enter for a new world: ")?;
-            choice
-                .parse::<usize>()
-                .ok()
-                .and_then(|index| save_files.get(index.saturating_sub(1)).cloned())
-        } else if legacy_path.exists() {
-            Some(legacy_path.clone())
-        } else {
-            None
+    loop {
+        let current_dir = PathBuf::from(".");
+        let save_files = find_save_files(&current_dir)?;
+        let legacy_path = legacy_save_path(&current_dir);
+        let has_saves = !save_files.is_empty() || legacy_path.exists();
+
+        set_menu_screen(
+            "THE ASHEN CHRONICLE",
+            Some("The world remembers. The dead do not.".to_string()),
+            Some(ART.to_string()),
+        );
+
+        let mut options = vec!["New Game".to_string()];
+        if has_saves {
+            options.push("Load Game".to_string());
+        }
+        options.push("Quit".to_string());
+
+        let Some(choice) = choose_from_list("Begin", &options, None)? else {
+            continue;
         };
 
-        if let Some(path) = selected {
-            let choice = prompt("Load existing save? [y/N] ")?;
-            if choice.eq_ignore_ascii_case("y") {
-                match load_game(&path) {
-                    Ok(state) => {
-                        let warnings = validate_loaded_state(&state);
-                        if warnings.is_empty() {
-                            println!("Save loaded successfully.");
-                        } else {
-                            println!("Save loaded with {} warning(s):", warnings.len());
-                            for warning in warnings {
-                                println!("  - {}", warning);
-                            }
-                        }
-                        let save_path = character_save_path(&current_dir, &state.character.name);
-                        return Ok((state, save_path));
-                    }
-                    Err(err) => {
-                        println!("Could not load {}: {}", path.display(), err);
-                        pause();
-                    }
+        match options[choice].as_str() {
+            "New Game" => {
+                set_menu_screen(
+                    "NEW GAME",
+                    Some("Begin a new life in a world that has yet to remember you.".to_string()),
+                    None,
+                );
+                let state = create_from_prompts(WorldMode::New)?;
+                let save_path = character_save_path(&current_dir, &state.character.name);
+                return Ok(Some((state, save_path)));
+            }
+            "Load Game" => {
+                if let Some(result) = load_screen(&current_dir, save_files, legacy_path)? {
+                    return Ok(Some(result));
                 }
             }
+            "Quit" => return Ok(None),
+            _ => {}
         }
     }
+}
 
-    let state = create_from_prompts(WorldMode::New)?;
-    let save_path = character_save_path(&current_dir, &state.character.name);
-    Ok((state, save_path))
+fn load_screen(
+    current_dir: &Path,
+    mut save_files: Vec<PathBuf>,
+    legacy_path: PathBuf,
+) -> std::io::Result<Option<(GameState, PathBuf)>> {
+    if legacy_path.exists() && !save_files.iter().any(|path| path == &legacy_path) {
+        save_files.push(legacy_path);
+    }
+
+    if save_files.is_empty() {
+        return Ok(None);
+    }
+
+    let options: Vec<String> = save_files
+        .iter()
+        .map(|path| path.file_name().and_then(|name| name.to_str()).unwrap_or("Unknown save").to_string())
+        .collect();
+
+    set_menu_screen(
+        "LOAD GAME",
+        Some("Choose a life to continue. No progress is changed until the save is loaded.".to_string()),
+        None,
+    );
+
+    let Some(choice) = choose_from_list("Saved lives", &options, Some("Back"))? else {
+        return Ok(None);
+    };
+
+    let path = &save_files[choice];
+    match load_game(path) {
+        Ok(state) => {
+            let warnings = validate_loaded_state(&state);
+            let save_path = character_save_path(current_dir, &state.character.name);
+            if warnings.is_empty() {
+                return Ok(Some((state, save_path)));
+            }
+            let warning_text = format!(
+                "Save loaded with {} warning(s). The game will continue, but the save should be reviewed.",
+                warnings.len()
+            );
+            set_menu_screen("LOAD GAME", Some(warning_text), None);
+            pause();
+            Ok(Some((state, save_path)))
+        }
+        Err(err) => {
+            set_menu_screen(
+                "LOAD GAME",
+                Some(format!("Could not load {}: {}", path.display(), err)),
+                None,
+            );
+            pause();
+            Ok(None)
+        }
+    }
 }
 
 fn bootstrap_campaign_content(state: &mut GameState) {
@@ -273,7 +334,7 @@ fn main_loop(state: &mut GameState, save_path: &mut PathBuf) -> std::io::Result<
     loop {
         if !state.character.alive {
             clear_log();
-            if !death_screen(state, save_path)? {
+            if !death_screen(state)? {
                 return Ok(());
             }
             *save_path = character_save_path(PathBuf::from(".").as_path(), &state.character.name);
@@ -315,8 +376,6 @@ fn main_loop(state: &mut GameState, save_path: &mut PathBuf) -> std::io::Result<
             }
             GameAction::Quit => {
                 if quit_screen()? {
-                    save_game(save_path, state)?;
-                    println!("Saved to {}", save_path.display());
                     return Ok(());
                 }
                 Ok(())
@@ -405,10 +464,11 @@ fn create_inherited_from_world(state: &GameState) -> std::io::Result<GameState> 
 }
 
 fn quit_screen() -> std::io::Result<bool> {
-    const VARIANTS: [(&str, &str, &str); 4] = [
+    const VARIANTS: [(&str, &str, &str, &str); 4] = [
         (
             "The road ends here.\nFor tonight, anyway.",
-            "[Y] Let the ashes take it.\n[N] Not yet. The night has more to say.",
+            "Let the ashes take it.",
+            "Not yet. The night has more to say.",
             r#"        .-''''-.
        /  .--.  \
       /  /    \  \
@@ -421,7 +481,8 @@ fn quit_screen() -> std::io::Result<bool> {
         ),
         (
             "The fire is dying.\nYour story does not have to.",
-            "[Y] Close the book.\n[N] Turn the page.",
+            "Close the book.",
+            "Turn the page.",
             r#"          /\
          /  \
         / /\ \
@@ -435,7 +496,8 @@ fn quit_screen() -> std::io::Result<bool> {
         ),
         (
             "Night has swallowed the road.\nOnly your footprints remain.",
-            "[Y] Leave them to the dark.\n[N] Keep walking.",
+            "Leave them to the dark.",
+            "Keep walking.",
             r#"       _..._       _..._
      .-'     '-. .-'     '-.
     /           V           \
@@ -448,7 +510,8 @@ fn quit_screen() -> std::io::Result<bool> {
         ),
         (
             "The last ember has gone black.\nThe silence is waiting.",
-            "[Y] Let it be silent.\n[N] Break the silence.",
+            "Let it be silent.",
+            "Break the silence.",
             r#"            .
            / \
           /   \
@@ -466,18 +529,14 @@ fn quit_screen() -> std::io::Result<bool> {
         .map(|duration| duration.subsec_nanos() as usize)
         .unwrap_or(0);
     let index = tick % VARIANTS.len();
-    let (line, choices, art) = VARIANTS[index];
+    let (line, leave_choice, stay_choice, art) = VARIANTS[index];
+    let options = vec![leave_choice.to_string(), stay_choice.to_string()];
 
-    println!("\n{art}");
-    println!("{line}\n");
-    println!("{choices}");
-
-    loop {
-        match prompt("")?.as_str() {
-            "y" | "yes" => return Ok(true),
-            "n" | "no" | "" => return Ok(false),
-            _ => println!("Choose Y to leave, or N to stay."),
-        }
+    set_menu_screen("LEAVE THE ASHES?", Some(line.to_string()), Some(art.to_string()));
+    match choose_from_list("", &options, None)? {
+        Some(0) => Ok(true),
+        Some(1) => Ok(false),
+        _ => Ok(false),
     }
 }
 
@@ -596,7 +655,7 @@ fn render_state(state: &GameState) {
         threat_line,
         action_hint: Some("Arrows / Enter / Esc".to_string()),
     };
-    crate::ui::set_dashboard(dashboard);
+    set_dashboard(dashboard);
 }
 
 fn maybe_run_location_scene(state: &mut GameState) -> std::io::Result<()> {
@@ -894,7 +953,6 @@ fn complete_quest(state: &mut GameState, quest_index: usize) -> bool {
     }
     state.world.completed_quest_ids.push(quest_key.clone());
 
-    // Reputation is split between doing the deed and carrying the faction's reward.
     adjust_faction_reputation(
         state,
         faction_id,
@@ -921,8 +979,7 @@ fn complete_quest(state: &mut GameState, quest_index: usize) -> bool {
         format!("{} completed {}.", current_character_name, title),
     );
     println!(
-        "
-Quest complete: {}",
+        "\nQuest complete: {}",
         title
     );
     println!("  Quest item consumed: {}", required_item_name);
@@ -1768,27 +1825,33 @@ fn create_corpse(state: &mut GameState, epitaph: String) -> Corpse {
     }
 }
 
-fn death_screen(state: &mut GameState, save_path: &Path) -> std::io::Result<bool> {
+fn death_screen(state: &mut GameState) -> std::io::Result<bool> {
     death_legacy_screen(state);
     let options = vec![
         "Create a new world".to_string(),
         "Inherit this world with a new character".to_string(),
-        "Save and quit".to_string(),
+        "Quit".to_string(),
     ];
     match choose_from_list("What remains?", &options, None)? {
         Some(0) => {
+            set_menu_screen(
+                "NEW GAME",
+                Some("A new life begins, but this world remembers what happened here.".to_string()),
+                None,
+            );
             *state = create_from_prompts(WorldMode::New)?;
             Ok(true)
         }
         Some(1) => {
+            set_menu_screen(
+                "INHERIT THIS WORLD",
+                Some("The next life will inherit the world, not the memories.".to_string()),
+                None,
+            );
             *state = create_inherited_from_world(state)?;
             Ok(true)
         }
-        Some(2) => {
-            save_game(save_path, state)?;
-            println!("Saved to {}", save_path.display());
-            Ok(false)
-        }
+        Some(2) => quit_screen(),
         _ => Ok(false),
     }
 }
