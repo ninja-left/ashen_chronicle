@@ -19,7 +19,7 @@ pub(crate) fn dispatch(
         actions::GameAction::Journal => actions::write_note(state)?,
         actions::GameAction::CharacterSheet => actions::character_sheet(state),
         actions::GameAction::TestDeath => actions::force_death(state),
-        actions::GameAction::Quit => return Ok(screens::quit_screen()?),
+        actions::GameAction::Quit => return screens::quit_screen(),
     }
     Ok(false)
 }
