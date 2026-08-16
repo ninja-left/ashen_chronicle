@@ -52,7 +52,8 @@ pub fn load_campaign_content_report() -> ContentLoadReport {
         .map(|entry| entry.name.as_str())
         .collect();
     let base_events = std::mem::take(&mut report.content.events);
-    let base_event_ids: HashSet<String> = base_events.iter().map(|event| event.id.clone()).collect();
+    let base_event_ids: HashSet<String> =
+        base_events.iter().map(|event| event.id.clone()).collect();
     report.content.events = filter_valid_events(
         base_events,
         &base_location_names,
@@ -75,7 +76,10 @@ pub fn load_campaign_content_report() -> ContentLoadReport {
     for discovered in discovered_mods {
         if !discovered.manifest.enabled || !seen_mod_ids.insert(discovered.manifest.id.clone()) {
             if discovered.manifest.enabled {
-                report.warnings.push(format!("skipping duplicate mod id {}", discovered.manifest.id));
+                report.warnings.push(format!(
+                    "skipping duplicate mod id {}",
+                    discovered.manifest.id
+                ));
             }
             continue;
         }
@@ -118,20 +122,34 @@ fn load_mod_content(manifest_path: &Path, manifest: &ModManifest) -> io::Result<
 }
 
 fn discover_mods() -> Vec<DiscoveredMod> {
-    let Some(mods_root) = mods_directory_path() else { return Vec::new(); };
-    let Ok(entries) = fs::read_dir(mods_root) else { return Vec::new(); };
+    let Some(mods_root) = mods_directory_path() else {
+        return Vec::new();
+    };
+    let Ok(entries) = fs::read_dir(mods_root) else {
+        return Vec::new();
+    };
     let mut found = Vec::new();
     for entry in entries.flatten() {
         let path = entry.path();
-        if !path.is_dir() { continue; }
+        if !path.is_dir() {
+            continue;
+        }
         let manifest_path = path.join("manifest.json");
-        if !manifest_path.exists() { continue; }
+        if !manifest_path.exists() {
+            continue;
+        }
         match fs::read_to_string(&manifest_path)
             .ok()
             .and_then(|data| serde_json::from_str::<ModManifest>(&data).ok())
         {
-            Some(manifest) => found.push(DiscoveredMod { manifest, manifest_path }),
-            None => ui::diagnostic(&format!("Could not parse mod manifest {}", manifest_path.display())),
+            Some(manifest) => found.push(DiscoveredMod {
+                manifest,
+                manifest_path,
+            }),
+            None => ui::diagnostic(&format!(
+                "Could not parse mod manifest {}",
+                manifest_path.display()
+            )),
         }
     }
     found
@@ -147,31 +165,72 @@ fn mods_directory_path() -> Option<PathBuf> {
 
 fn first_existing_path(relative: &str) -> Option<PathBuf> {
     let mut candidates = vec![PathBuf::from(relative)];
-    if let Ok(current_dir) = env::current_dir() { candidates.push(current_dir.join(relative)); }
+    if let Ok(current_dir) = env::current_dir() {
+        candidates.push(current_dir.join(relative));
+    }
     if let Ok(exe) = env::current_exe() {
         if let Some(dir) = exe.parent() {
             candidates.push(dir.join(relative));
-            if let Some(parent) = dir.parent() { candidates.push(parent.join(relative)); }
+            if let Some(parent) = dir.parent() {
+                candidates.push(parent.join(relative));
+            }
         }
     }
     candidates.into_iter().find(|path| path.exists())
 }
 
-fn merge_campaign_content(base: &mut CampaignContent, incoming: CampaignContent, warnings: &mut Vec<String>) {
+fn merge_campaign_content(
+    base: &mut CampaignContent,
+    incoming: CampaignContent,
+    warnings: &mut Vec<String>,
+) {
     base.world.region = incoming.world.region;
-    merge_vec_by_key(&mut base.world.locations, incoming.world.locations, |entry| entry.id.clone());
-    merge_vec_by_key(&mut base.factions, incoming.factions, |entry| entry.id.clone());
+    merge_vec_by_key(
+        &mut base.world.locations,
+        incoming.world.locations,
+        |entry| entry.id.clone(),
+    );
+    merge_vec_by_key(&mut base.factions, incoming.factions, |entry| {
+        entry.id.clone()
+    });
     merge_vec_by_key(&mut base.npcs, incoming.npcs, |entry| entry.id.clone());
     merge_vec_by_key(&mut base.quests, incoming.quests, |entry| entry.id.clone());
-    merge_vec_by_key(&mut base.encounters, incoming.encounters, |entry| entry.location_name.clone());
-    merge_vec_by_key(&mut base.atmospheres, incoming.atmospheres, |entry| entry.location_name.clone());
-    merge_vec_by_key(&mut base.item_visuals, incoming.item_visuals, |entry| entry.item_name.clone());
+    merge_vec_by_key(&mut base.encounters, incoming.encounters, |entry| {
+        entry.location_name.clone()
+    });
+    merge_vec_by_key(&mut base.atmospheres, incoming.atmospheres, |entry| {
+        entry.location_name.clone()
+    });
+    merge_vec_by_key(&mut base.item_visuals, incoming.item_visuals, |entry| {
+        entry.item_name.clone()
+    });
 
-    let locations: HashSet<&str> = base.world.locations.iter().map(|entry| entry.name.as_str()).collect();
-    let factions: HashSet<&str> = base.factions.iter().map(|entry| entry.name.as_str()).collect();
+    let locations: HashSet<&str> = base
+        .world
+        .locations
+        .iter()
+        .map(|entry| entry.name.as_str())
+        .collect();
+    let factions: HashSet<&str> = base
+        .factions
+        .iter()
+        .map(|entry| entry.name.as_str())
+        .collect();
     let existing: HashSet<String> = base.events.iter().map(|event| event.id.clone()).collect();
-    let known: HashSet<String> = existing.iter().cloned().chain(incoming.events.iter().map(|event| event.id.clone())).collect();
-    let accepted = filter_valid_events(incoming.events, &locations, &factions, &known, &existing, "mod content", warnings);
+    let known: HashSet<String> = existing
+        .iter()
+        .cloned()
+        .chain(incoming.events.iter().map(|event| event.id.clone()))
+        .collect();
+    let accepted = filter_valid_events(
+        incoming.events,
+        &locations,
+        &factions,
+        &known,
+        &existing,
+        "mod content",
+        warnings,
+    );
     base.events.extend(accepted);
 }
 
@@ -189,23 +248,48 @@ fn filter_valid_events(
     let mut pending = Vec::new();
     for event in events {
         let mut issues = validate_event_content(&event, locations, factions, known_ids);
-        if !seen_ids.insert(event.id.clone()) { issues.push(format!("duplicate event id {}", event.id)); }
-        if issues.is_empty() { pending.push(event); }
-        else { warnings.push(format!("rejecting event '{}' from {}: {}", event.id, source, issues.join("; "))); }
+        if !seen_ids.insert(event.id.clone()) {
+            issues.push(format!("duplicate event id {}", event.id));
+        }
+        if issues.is_empty() {
+            pending.push(event);
+        } else {
+            warnings.push(format!(
+                "rejecting event '{}' from {}: {}",
+                event.id,
+                source,
+                issues.join("; ")
+            ));
+        }
     }
     loop {
-        let available: HashSet<String> = existing_ids.iter().cloned().chain(accepted.iter().map(|event: &EventContent| event.id.clone())).chain(pending.iter().map(|event| event.id.clone())).collect();
+        let available: HashSet<String> = existing_ids
+            .iter()
+            .cloned()
+            .chain(accepted.iter().map(|event: &EventContent| event.id.clone()))
+            .chain(pending.iter().map(|event| event.id.clone()))
+            .collect();
         let mut removed = false;
         let mut next = Vec::new();
         for event in pending {
-            let prior = event.conditions.as_ref().and_then(|conditions| conditions.prior_event_id.as_deref());
+            let prior = event
+                .conditions
+                .as_ref()
+                .and_then(|conditions| conditions.prior_event_id.as_deref());
             if let Some(prior_id) = prior.filter(|id| !available.contains(*id)) {
-                warnings.push(format!("rejecting event '{}' from {}: prior event '{}' was rejected or unavailable", event.id, source, prior_id));
+                warnings.push(format!(
+                    "rejecting event '{}' from {}: prior event '{}' was rejected or unavailable",
+                    event.id, source, prior_id
+                ));
                 removed = true;
-            } else { next.push(event); }
+            } else {
+                next.push(event);
+            }
         }
         pending = next;
-        if !removed { break; }
+        if !removed {
+            break;
+        }
     }
     accepted.extend(pending);
     accepted
@@ -218,20 +302,70 @@ fn validate_event_content(
     known_ids: &HashSet<String>,
 ) -> Vec<String> {
     let mut issues = Vec::new();
-    if event.id.trim().is_empty() { issues.push("empty id".into()); }
-    if event.trigger.trim().is_empty() { issues.push("empty trigger".into()); }
-    if event.weight == 0 { issues.push("zero weight".into()); }
-    if let Some(chance) = event.chance_percent { if chance > 100 { issues.push(format!("invalid chance {}", chance)); } }
-    if event.effects.is_empty() { issues.push("no effects".into()); }
+    if event.id.trim().is_empty() {
+        issues.push("empty id".into());
+    }
+    if event.trigger.trim().is_empty() {
+        issues.push("empty trigger".into());
+    }
+    if event.weight == 0 {
+        issues.push("zero weight".into());
+    }
+    if let Some(chance) = event.chance_percent {
+        if chance > 100 {
+            issues.push(format!("invalid chance {}", chance));
+        }
+    }
+    if event.effects.is_empty() {
+        issues.push("no effects".into());
+    }
     if let Some(conditions) = &event.conditions {
-        for location in &conditions.locations { if !locations.contains(location.as_str()) { issues.push(format!("unknown location {}", location)); } }
-        if let (Some(min_day), Some(max_day)) = (conditions.min_day, conditions.max_day) { if min_day > max_day { issues.push("min_day greater than max_day".into()); } }
-        if let Some(prior) = conditions.prior_event_id.as_deref() { if !known_ids.contains(prior) { issues.push(format!("unknown prior event id {}", prior)); } }
-        if let Some(faction) = conditions.faction_name.as_deref() { if !factions.contains(faction) { issues.push(format!("unknown faction {}", faction)); } }
-        if (conditions.min_reputation.is_some() || conditions.max_reputation.is_some()) && conditions.faction_name.is_none() { issues.push("reputation condition requires faction_name".into()); }
-        if let (Some(min), Some(max)) = (conditions.min_reputation, conditions.max_reputation) { if min > max { issues.push("min_reputation greater than max_reputation".into()); } }
-        if conditions.required_item_name.as_deref().map(|name| name.trim().is_empty()).unwrap_or(false) { issues.push("required_item_name cannot be empty".into()); }
-        if conditions.required_condition_name.as_deref().map(|name| name.trim().is_empty()).unwrap_or(false) { issues.push("required_condition_name cannot be empty".into()); }
+        for location in &conditions.locations {
+            if !locations.contains(location.as_str()) {
+                issues.push(format!("unknown location {}", location));
+            }
+        }
+        if let (Some(min_day), Some(max_day)) = (conditions.min_day, conditions.max_day) {
+            if min_day > max_day {
+                issues.push("min_day greater than max_day".into());
+            }
+        }
+        if let Some(prior) = conditions.prior_event_id.as_deref() {
+            if !known_ids.contains(prior) {
+                issues.push(format!("unknown prior event id {}", prior));
+            }
+        }
+        if let Some(faction) = conditions.faction_name.as_deref() {
+            if !factions.contains(faction) {
+                issues.push(format!("unknown faction {}", faction));
+            }
+        }
+        if (conditions.min_reputation.is_some() || conditions.max_reputation.is_some())
+            && conditions.faction_name.is_none()
+        {
+            issues.push("reputation condition requires faction_name".into());
+        }
+        if let (Some(min), Some(max)) = (conditions.min_reputation, conditions.max_reputation) {
+            if min > max {
+                issues.push("min_reputation greater than max_reputation".into());
+            }
+        }
+        if conditions
+            .required_item_name
+            .as_deref()
+            .map(|name| name.trim().is_empty())
+            .unwrap_or(false)
+        {
+            issues.push("required_item_name cannot be empty".into());
+        }
+        if conditions
+            .required_condition_name
+            .as_deref()
+            .map(|name| name.trim().is_empty())
+            .unwrap_or(false)
+        {
+            issues.push("required_condition_name cannot be empty".into());
+        }
     }
     issues
 }
@@ -243,13 +377,17 @@ where
 {
     for item in incoming {
         let key = key_fn(&item);
-        if let Some(position) = base.iter().position(|existing| key_fn(existing) == key) { base[position] = item; }
-        else { base.push(item); }
+        if let Some(position) = base.iter().position(|existing| key_fn(existing) == key) {
+            base[position] = item;
+        } else {
+            base.push(item);
+        }
     }
 }
 
 fn default_campaign_content() -> CampaignContent {
-    serde_json::from_str(include_str!("../../data/base_content.json")).expect("embedded base content JSON must remain valid")
+    serde_json::from_str(include_str!("../../data/base_content.json"))
+        .expect("embedded base content JSON must remain valid")
 }
 
 #[cfg(test)]
@@ -257,7 +395,15 @@ mod tests {
     use super::*;
 
     fn valid_event(id: &str) -> EventContent {
-        EventContent { id: id.into(), trigger: "travel_arrival".into(), weight: 1, chance_percent: Some(100), cooldown_turns: None, conditions: None, effects: vec![EventEffectContent::Pause] }
+        EventContent {
+            id: id.into(),
+            trigger: "travel_arrival".into(),
+            weight: 1,
+            chance_percent: Some(100),
+            cooldown_turns: None,
+            conditions: None,
+            effects: vec![EventEffectContent::Pause],
+        }
     }
 
     #[test]
@@ -268,8 +414,19 @@ mod tests {
         let known = HashSet::from(["good.event".into(), "bad.event".into()]);
         let mut invalid = valid_event("bad.event");
         invalid.weight = 0;
-        invalid.conditions = Some(EventConditionContent { locations: vec!["Unknown Place".into()], ..Default::default() });
-        let accepted = filter_valid_events(vec![valid_event("good.event"), invalid], &locations, &factions, &known, &HashSet::new(), "test content", &mut warnings);
+        invalid.conditions = Some(EventConditionContent {
+            locations: vec!["Unknown Place".into()],
+            ..Default::default()
+        });
+        let accepted = filter_valid_events(
+            vec![valid_event("good.event"), invalid],
+            &locations,
+            &factions,
+            &known,
+            &HashSet::new(),
+            "test content",
+            &mut warnings,
+        );
         assert_eq!(accepted.len(), 1);
         assert_eq!(accepted[0].id, "good.event");
         assert_eq!(warnings.len(), 1);
@@ -286,10 +443,23 @@ mod tests {
         let mut bad = valid_event("bad.event");
         bad.weight = 0;
         let mut followup = valid_event("followup.event");
-        followup.conditions = Some(EventConditionContent { prior_event_id: Some("bad.event".into()), ..Default::default() });
-        let accepted = filter_valid_events(vec![bad, followup], &locations, &factions, &known, &HashSet::new(), "test content", &mut warnings);
+        followup.conditions = Some(EventConditionContent {
+            prior_event_id: Some("bad.event".into()),
+            ..Default::default()
+        });
+        let accepted = filter_valid_events(
+            vec![bad, followup],
+            &locations,
+            &factions,
+            &known,
+            &HashSet::new(),
+            "test content",
+            &mut warnings,
+        );
         assert!(accepted.is_empty());
-        assert!(warnings.iter().any(|warning| warning.contains("followup.event") && warning.contains("unavailable")));
+        assert!(warnings
+            .iter()
+            .any(|warning| warning.contains("followup.event") && warning.contains("unavailable")));
     }
 
     #[test]
@@ -300,8 +470,19 @@ mod tests {
         let known = HashSet::from(["base.event".into(), "followup.event".into()]);
         let existing = HashSet::from(["base.event".into()]);
         let mut followup = valid_event("followup.event");
-        followup.conditions = Some(EventConditionContent { prior_event_id: Some("base.event".into()), ..Default::default() });
-        let accepted = filter_valid_events(vec![followup], &locations, &factions, &known, &existing, "mod content", &mut warnings);
+        followup.conditions = Some(EventConditionContent {
+            prior_event_id: Some("base.event".into()),
+            ..Default::default()
+        });
+        let accepted = filter_valid_events(
+            vec![followup],
+            &locations,
+            &factions,
+            &known,
+            &existing,
+            "mod content",
+            &mut warnings,
+        );
         assert_eq!(accepted.len(), 1);
         assert!(warnings.is_empty());
     }
@@ -313,8 +494,20 @@ mod tests {
         let factions = HashSet::from(["Cinder Wardens"]);
         let known = HashSet::from(["rep.event".into()]);
         let mut invalid = valid_event("rep.event");
-        invalid.conditions = Some(EventConditionContent { min_reputation: Some(10), max_reputation: Some(5), ..Default::default() });
-        let accepted = filter_valid_events(vec![invalid], &locations, &factions, &known, &HashSet::new(), "test content", &mut warnings);
+        invalid.conditions = Some(EventConditionContent {
+            min_reputation: Some(10),
+            max_reputation: Some(5),
+            ..Default::default()
+        });
+        let accepted = filter_valid_events(
+            vec![invalid],
+            &locations,
+            &factions,
+            &known,
+            &HashSet::new(),
+            "test content",
+            &mut warnings,
+        );
         assert!(accepted.is_empty());
         assert!(warnings[0].contains("reputation condition requires faction_name"));
     }
@@ -326,7 +519,15 @@ mod tests {
         let factions = HashSet::from(["Cinder Wardens"]);
         let existing = HashSet::from(["travel.event".into()]);
         let known = HashSet::from(["travel.event".into(), "new.event".into()]);
-        let accepted = filter_valid_events(vec![valid_event("travel.event"), valid_event("new.event")], &locations, &factions, &known, &existing, "mod content", &mut warnings);
+        let accepted = filter_valid_events(
+            vec![valid_event("travel.event"), valid_event("new.event")],
+            &locations,
+            &factions,
+            &known,
+            &existing,
+            "mod content",
+            &mut warnings,
+        );
         assert_eq!(accepted.len(), 1);
         assert_eq!(accepted[0].id, "new.event");
         assert!(warnings[0].contains("duplicate event id travel.event"));
