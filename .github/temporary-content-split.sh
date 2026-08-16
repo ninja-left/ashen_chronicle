@@ -103,6 +103,7 @@ rm -f .github/workflows/temporary-content-export.yml
 rm -f .github/workflows/temporary-content-split.yml
 rm -f .github/workflows/temporary-content-split-v2.yml
 rm -f .github/workflows/temporary-content-split-v3.yml
+rm -f .github/workflows/temporary-content-split-final.yml
 rm -f tmp-content-split-trigger.txt
 rm -f tmp-content-split-trigger-2.txt
 rm -f tmp-content-split-trigger-3.txt
