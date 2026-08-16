@@ -7,9 +7,9 @@ mkdir -p src/content
   echo 'use serde::{Deserialize, Serialize};'
   echo 'use std::collections::HashSet;'
   echo
-  sed -n '14,205p' src/content.rs
+  sed -n '14,199p' src/content.rs
   echo
-  sed -n '207,417p' src/content.rs
+  sed -n '206,417p' src/content.rs
   sed -n '494,529p' src/content.rs
   echo
   echo 'fn default_true() -> bool {'
@@ -102,13 +102,14 @@ rm -f .github/workflows/temporary-content-split.yml
 rm -f .github/workflows/temporary-content-split-v2.yml
 rm -f .github/workflows/temporary-content-split-v3.yml
 rm -f tmp-content-split-trigger.txt
+rm -f tmp-content-split-trigger-2.txt
 rm -f .github/temporary-content-split.sh
 
 cargo fmt --all
 
 git config user.name "github-actions[bot]"
 git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-git add Cargo.toml Cargo.lock ROADMAP.md src/content.rs src/content/definitions.rs src/content/loader.rs src/content/seeding.rs .github/workflows .github/temporary-content-split.sh tmp-content-split-trigger.txt
-git add -u .github/workflows .github/temporary-content-split.sh tmp-content-split-trigger.txt
+git add Cargo.toml Cargo.lock ROADMAP.md src/content.rs src/content/definitions.rs src/content/loader.rs src/content/seeding.rs .github/workflows .github/temporary-content-split.sh tmp-content-split-trigger.txt tmp-content-split-trigger-2.txt
+git add -u .github/workflows .github/temporary-content-split.sh tmp-content-split-trigger.txt tmp-content-split-trigger-2.txt
 git commit -m "refactor: split content architecture"
 git push
