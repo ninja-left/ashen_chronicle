@@ -167,7 +167,7 @@
 
 ## v0.17.3 Docked prompt layout cleanup
 
-- moved prompt and confirmation dialogs into a reserved bottom panel instead of drawing them over the rest of the UI
+- moved prompt and confirmation dialogs into a reserved bottom panel instead of drawing them over the rest of the screen
 - kept the main dashboard visible while choices, pause prompts, and quit confirmations are active
 - tightened the prompt layout so messages and results stay readable behind the prompt flow
 
@@ -362,5 +362,26 @@ src/
 - preserved gameplay behavior, save compatibility, and menu dispatch behavior
 - bumped the project version to v0.26.0
 
+## v0.27.0 Game Facade Cleanup
+
+- removed the redundant loaded-state validation wrapper from `game.rs` and re-exported the world validation function directly
+- kept `game.rs` as a minimal top-level game entry facade
+- preserved gameplay behavior, save compatibility, and screen flow
+- bumped the project version to v0.27.0
+
+## v0.27.1 World Bootstrap Decoupling
+
+- removed the `game/world.rs` dependency on `game/actions.rs`
+- kept faction lookup inside the world/bootstrap responsibility
+- preserved campaign bootstrap, save compatibility, and gameplay behavior
+- bumped the project version to v0.27.1
+
+## v0.28.0 Gameplay Action Dispatcher Architecture
+
+- moved `GameAction` dispatch out of `game/runtime.rs` into `game/dispatcher.rs`
+- kept the runtime loop focused on lifecycle handling, presentation, menu selection, and turn flow
+- preserved existing action, combat, screen, world, save, and quit behavior
+- bumped the project version to v0.28.0
+
 Planned follow-up:
-- v0.27.0: Continue architectural cleanup only where another clear responsibility boundary improves maintainability.
+- v0.29.0: Continue decomposing `game/actions.rs` only where a clear responsibility boundary improves maintainability.
