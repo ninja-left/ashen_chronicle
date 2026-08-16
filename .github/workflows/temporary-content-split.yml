@@ -1,0 +1,157 @@
+name: Temporary Content Architecture Split
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  split:
+    if: github.event.head_commit.message != 'refactor: split content architecture'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Split content module and update version/docs
+        shell: python
+        run: |
+          from pathlib import Path
+
+          root = Path('.').resolve()
+          source_path = root / 'src' / 'content.rs'
+          source = source_path.read_text()
+
+          impl_start = source.index('impl CampaignContent {')
+          report_impl_start = source.index('impl ContentLoadReport {')
+          impl_block = source[impl_start:report_impl_start]
+
+          seed_start = impl_block.index('    pub fn seed_world')
+          atmosphere_start = impl_block.index('    pub fn atmosphere_for')
+          seed_method = impl_block[seed_start:atmosphere_start]
+          definitions_impl = impl_block[:seed_start] + impl_block[atmosphere_start:]
+
+          type_block = source[source.index('#[derive(Debug, Clone, Serialize, Deserialize)]\npub struct CampaignContent'):impl_start]
+
+          loader_start = source.index('pub fn load_campaign_content()')
+          tests_start = source.index('#[cfg(test)]', loader_start)
+          loader_body = source[loader_start:tests_start]
+          tests = source[tests_start:]
+
+          content_dir = root / 'src' / 'content'
+          content_dir.mkdir(parents=True, exist_ok=True)
+
+          (content_dir / 'definitions.rs').write_text(
+              'use serde::{Deserialize, Serialize};\n'
+              'use std::collections::HashSet;\n\n'
+              + type_block
+              + '\n'
+              + definitions_impl
+              + '\nfn default_true() -> bool {\n    true\n}\n\n'
+              + 'fn default_mod_content_file() -> String {\n    "content.json".to_string()\n}\n'
+          )
+
+          (content_dir / 'seeding.rs').write_text(
+              'use crate::content::definitions::CampaignContent;\n'
+              'use crate::model::{Location, Region, World};\n\n'
+              'impl CampaignContent {\n'
+              + seed_method
+              + '    }\n}\n'
+          )
+
+          (content_dir / 'loader.rs').write_text(
+              'use super::definitions::*;\n'
+              'use crate::ui;\n'
+              'use std::collections::HashSet;\n'
+              'use std::env;\n'
+              'use std::fs;\n'
+              'use std::io;\n'
+              'use std::path::{Path, PathBuf};\n\n'
+              'const CONTENT_FILE_NAME: &str = "data/base_content.json";\n'
+              'const MODS_DIR_NAME: &str = "data/mods";\n\n'
+              '#[derive(Debug, Clone)]\n'
+              'struct DiscoveredMod {\n'
+              '    manifest: ModManifest,\n'
+              '    manifest_path: PathBuf,\n'
+              '}\n\n'
+              'impl ContentLoadReport {\n'
+              '    fn with_content(content: CampaignContent) -> Self {\n'
+              '        Self {\n'
+              '            content,\n'
+              '            loaded_mods: Vec::new(),\n'
+              '            warnings: Vec::new(),\n'
+              '        }\n'
+              '    }\n'
+              '}\n\n'
+              + loader_body
+              + '\n'
+              + tests
+          )
+
+          source_path.write_text(
+              'pub mod definitions;\n'
+              'pub mod loader;\n'
+              'pub mod seeding;\n\n'
+              'pub use definitions::*;\n'
+              'pub use loader::{load_campaign_content, load_campaign_content_report, ContentLoadReport};\n'
+          )
+
+          cargo_toml = root / 'Cargo.toml'
+          cargo_text = cargo_toml.read_text()
+          cargo_text = cargo_text.replace('version = "0.24.0"', 'version = "0.25.0"', 1)
+          cargo_toml.write_text(cargo_text)
+
+          lockfile = root / 'Cargo.lock'
+          lock_text = lockfile.read_text()
+          old_lock = 'name = "ashen_chronicle"\nversion = "0.23.0"'
+          new_lock = 'name = "ashen_chronicle"\nversion = "0.25.0"'
+          if old_lock not in lock_text:
+              raise SystemExit('expected ashen_chronicle package entry was not found in Cargo.lock')
+          lockfile.write_text(lock_text.replace(old_lock, new_lock, 1))
+
+          roadmap = root / 'ROADMAP.md'
+          roadmap_text = roadmap.read_text()
+          old_tail = (
+              'Planned follow-up:\n'
+              '- v0.25.0: Split content loading/definitions/seeding out of `content.rs`.\n'
+          )
+          new_tail = (
+              '## v0.25.0 Content Architecture\n\n'
+              '- split the monolithic `content.rs` into `content/definitions.rs`, `content/loader.rs`, and `content/seeding.rs`\n'
+              '- kept `content.rs` as a compatibility-facing module facade and preserved the existing public content-loading API\n'
+              '- moved campaign data definitions and content validation into the definitions module\n'
+              '- moved world seeding and content-to-world translation into the seeding module\n'
+              '- moved base/mod loading, merging, event filtering, path discovery, and related tests into the loader module\n'
+              '- preserved campaign content formats, mod behavior, event validation, and save compatibility\n'
+              '- bumped the project version to v0.25.0\n\n'
+              'Planned follow-up:\n'
+              '- v0.26.0: Continue architectural cleanup only where another clear responsibility boundary improves maintainability.\n'
+          )
+          if old_tail not in roadmap_text:
+              raise SystemExit('expected v0.24.0 roadmap follow-up was not found')
+          roadmap.write_text(roadmap_text.replace(old_tail, new_tail, 1))
+
+          workflow_path = root / '.github' / 'workflows' / 'temporary-content-split.yml'
+          workflow_path.unlink()
+
+      - name: Format
+        run: cargo fmt --all
+
+      - name: Commit split architecture
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Cargo.toml Cargo.lock ROADMAP.md src/content.rs src/content/definitions.rs src/content/loader.rs src/content/seeding.rs .github/workflows/temporary-content-export.yml .github/workflows/temporary-content-split.yml
+          git rm --cached .github/workflows/temporary-content-export.yml 2>/dev/null || true
+          git add -u .github/workflows/temporary-content-export.yml .github/workflows/temporary-content-split.yml
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
+            exit 0
+          fi
+          git commit -m "refactor: split content architecture"
+          git push
