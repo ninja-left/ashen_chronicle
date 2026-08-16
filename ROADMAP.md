@@ -354,5 +354,13 @@ src/
 - preserved gameplay behavior, save compatibility, and the existing screen flow
 - bumped the project version to v0.25.1
 
+## v0.26.0 Game Runtime Loop Architecture
+
+- moved the main gameplay loop from `game.rs` into `game/runtime.rs`
+- kept `game.rs` as the top-level game entry point and compatibility facade
+- kept runtime orchestration dependent on the existing action, combat, screen, world, and presentation modules
+- preserved gameplay behavior, save compatibility, and menu dispatch behavior
+- bumped the project version to v0.26.0
+
 Planned follow-up:
-- v0.26.0: Continue architectural cleanup only where another clear responsibility boundary improves maintainability.
+- v0.27.0: Continue architectural cleanup only where another clear responsibility boundary improves maintainability.
