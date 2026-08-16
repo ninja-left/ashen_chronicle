@@ -1,0 +1,21 @@
+name: Temporary Content Export
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/upload-artifact@v7.0.1
+        with:
+          name: content-source
+          path: src/content.rs
+          archive: false
