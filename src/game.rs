@@ -13,3 +13,5 @@ pub fn run() -> std::io::Result<()> {
     world::bootstrap_campaign_content(&mut state);
     runtime::main_loop(&mut state, &mut save_path)
 }
+
+pub(crate) use world::validate_loaded_state;
