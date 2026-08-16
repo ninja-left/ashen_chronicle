@@ -345,5 +345,14 @@ src/
 - preserved campaign content formats, mod behavior, event validation, and save compatibility
 - bumped the project version to v0.25.0
 
+## v0.25.1 Game Runtime Architecture Cleanup
+
+- moved campaign bootstrap and loaded-state validation from `game.rs` into `game/world.rs`
+- moved dashboard rendering and location-scene presentation from `game.rs` into `game/presentation.rs`
+- kept `game.rs` focused on application flow, menu dispatch, and orchestration
+- reused the cached campaign content during location-scene presentation instead of reloading the content pack on every newly visited location
+- preserved gameplay behavior, save compatibility, and the existing screen flow
+- bumped the project version to v0.25.1
+
 Planned follow-up:
 - v0.26.0: Continue architectural cleanup only where another clear responsibility boundary improves maintainability.
