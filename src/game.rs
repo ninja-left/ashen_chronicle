@@ -1,5 +1,6 @@
 mod actions;
 mod combat;
+mod dispatcher;
 mod presentation;
 mod runtime;
 mod screens;

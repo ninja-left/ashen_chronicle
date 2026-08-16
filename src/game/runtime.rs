@@ -1,4 +1,4 @@
-use crate::game::{actions, combat, presentation, screens, world};
+use crate::game::{actions, dispatcher, presentation, screens, world};
 use crate::model::GameState;
 use crate::persistence::character_save_path;
 use crate::ui::{choose_from_list, clear_log};
@@ -24,36 +24,8 @@ pub(crate) fn main_loop(state: &mut GameState, save_path: &mut PathBuf) -> io::R
             continue;
         };
         clear_log();
-        let result = match menu[choice].action {
-            actions::GameAction::Travel => actions::travel(state),
-            actions::GameAction::InvestigateThreat => combat::investigate_threat(state),
-            actions::GameAction::SearchRemains => actions::search_remains(state),
-            actions::GameAction::Talk => actions::talk(state),
-            actions::GameAction::Meditate => actions::meditate_and_save(state, save_path),
-            actions::GameAction::QuestLog => {
-                actions::review_quests(state);
-                Ok(())
-            }
-            actions::GameAction::Inventory => {
-                actions::show_inventory(state);
-                Ok(())
-            }
-            actions::GameAction::Journal => actions::write_note(state),
-            actions::GameAction::CharacterSheet => {
-                actions::character_sheet(state);
-                Ok(())
-            }
-            actions::GameAction::TestDeath => {
-                actions::force_death(state);
-                Ok(())
-            }
-            actions::GameAction::Quit => {
-                if screens::quit_screen()? {
-                    return Ok(());
-                }
-                Ok(())
-            }
-        };
-        result?;
+        if dispatcher::dispatch(state, menu[choice].action, save_path)? {
+            return Ok(());
+        }
     }
 }
