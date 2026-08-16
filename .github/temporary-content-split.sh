@@ -62,6 +62,8 @@ mkdir -p src/content
   sed -n '956,1133p' src/content.rs
 } > src/content/loader.rs
 
+sed -i 's#include_str!("../data/base_content.json")#include_str!("../../data/base_content.json")#' src/content/loader.rs
+
 cat > src/content.rs <<'EOF'
 pub mod definitions;
 pub mod loader;
@@ -103,13 +105,14 @@ rm -f .github/workflows/temporary-content-split-v2.yml
 rm -f .github/workflows/temporary-content-split-v3.yml
 rm -f tmp-content-split-trigger.txt
 rm -f tmp-content-split-trigger-2.txt
+rm -f tmp-content-split-trigger-3.txt
 rm -f .github/temporary-content-split.sh
 
 cargo fmt --all
 
 git config user.name "github-actions[bot]"
 git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-git add Cargo.toml Cargo.lock ROADMAP.md src/content.rs src/content/definitions.rs src/content/loader.rs src/content/seeding.rs .github/workflows .github/temporary-content-split.sh tmp-content-split-trigger.txt tmp-content-split-trigger-2.txt
-git add -u .github/workflows .github/temporary-content-split.sh tmp-content-split-trigger.txt tmp-content-split-trigger-2.txt
+git add Cargo.toml Cargo.lock ROADMAP.md src/content.rs src/content/definitions.rs src/content/loader.rs src/content/seeding.rs .github/workflows .github/temporary-content-split.sh tmp-content-split-trigger.txt tmp-content-split-trigger-2.txt tmp-content-split-trigger-3.txt
+git add -u .github/workflows .github/temporary-content-split.sh tmp-content-split-trigger.txt tmp-content-split-trigger-2.txt tmp-content-split-trigger-3.txt
 git commit -m "refactor: split content architecture"
 git push
