@@ -1,6 +1,13 @@
 use crate::content::load_campaign_content;
-use crate::game::actions;
 use crate::model::{Faction, GameState, Npc, Quest};
+
+fn faction_id_by_name(state: &GameState, faction_name: &str) -> Option<crate::model::EntityId> {
+    state
+        .factions
+        .iter()
+        .find(|faction| faction.name == faction_name)
+        .map(|faction| faction.id)
+}
 
 pub(crate) fn bootstrap_campaign_content(state: &mut GameState) {
     let content = state
@@ -38,7 +45,7 @@ pub(crate) fn bootstrap_campaign_content(state: &mut GameState) {
         let faction_id = npc_content
             .faction_name
             .as_deref()
-            .and_then(|name| actions::faction_id_by_name(state, name));
+            .and_then(|name| faction_id_by_name(state, name));
         let id = state.world.allocate_id();
         let mut npc = Npc::new(
             id,
@@ -66,8 +73,7 @@ pub(crate) fn bootstrap_campaign_content(state: &mut GameState) {
         else {
             continue;
         };
-        let Some(faction_id) = actions::faction_id_by_name(state, &quest_content.faction_name)
-        else {
+        let Some(faction_id) = faction_id_by_name(state, &quest_content.faction_name) else {
             continue;
         };
         let Some(giver_npc_id) = state
