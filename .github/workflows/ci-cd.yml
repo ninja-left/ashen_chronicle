@@ -9,6 +9,14 @@ on:
   pull_request:
     branches:
       - main
+  workflow_dispatch:
+
+# Development pushes stay on feature branches and do not start CI automatically.
+# PR runs replace older in-progress runs for the same branch/PR, preventing a
+# burst of intermediate fixes from producing a burst of stale CI failures.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -16,7 +24,10 @@ permissions:
 jobs:
   test:
     name: Test
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' || github.event_name == 'pull_request'
+    if: |
+      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      github.event_name == 'pull_request' ||
+      github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
 
     steps:
