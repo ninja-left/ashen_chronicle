@@ -5,8 +5,6 @@ mod runtime;
 mod screens;
 mod world;
 
-use crate::model::GameState;
-
 pub fn run() -> std::io::Result<()> {
     let _ui = crate::ui::init()?;
     let Some((mut state, mut save_path)) = screens::start_screen()? else {
@@ -16,7 +14,4 @@ pub fn run() -> std::io::Result<()> {
     runtime::main_loop(&mut state, &mut save_path)
 }
 
-// Compatibility facade for screen code; validation itself belongs to the world module.
-pub(crate) fn validate_loaded_state(state: &GameState) -> Vec<String> {
-    world::validate_loaded_state(state)
-}
+pub(crate) use world::validate_loaded_state;
