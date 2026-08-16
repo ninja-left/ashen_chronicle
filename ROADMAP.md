@@ -334,5 +334,16 @@ src/
 - kept save compatibility and existing gameplay behavior unchanged
 - kept the new modules dependent on the existing model, persistence, event, and UI systems instead of introducing parallel state systems
 
+## v0.25.0 Content Architecture
+
+- split the monolithic `content.rs` into `content/definitions.rs`, `content/loader.rs`, and `content/seeding.rs`
+- kept `content.rs` as a compatibility-facing module facade and preserved the existing content-loading entry point
+- moved campaign data definitions and content validation into the definitions module
+- moved world seeding and content-to-world translation into the seeding module
+- moved base/mod loading, merging, event filtering, path discovery, and content-loading tests into the loader module
+- corrected the embedded fallback content path for the new loader module location
+- preserved campaign content formats, mod behavior, event validation, and save compatibility
+- bumped the project version to v0.25.0
+
 Planned follow-up:
-- v0.25.0: Split content loading/definitions/seeding out of `content.rs`.
+- v0.26.0: Continue architectural cleanup only where another clear responsibility boundary improves maintainability.
